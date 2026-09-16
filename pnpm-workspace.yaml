@@ -1,0 +1,11 @@
+packages:
+  - apps/web
+
+# Only these dependencies may run install scripts.
+allowBuilds:
+  sharp: false
+  unrs-resolver: false
+
+minimumReleaseAgeExclude:
+  - '@tanstack/query-core@5.103.1'
+  - '@tanstack/react-query@5.103.1'

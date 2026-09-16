@@ -1,0 +1,84 @@
+import type { z } from "zod";
+
+import { ApiError, apiErrorFromResponse, invalidResponseError, networkError } from "./errors";
+
+type HttpMethod = "GET" | "POST" | "PATCH" | "PUT" | "DELETE";
+
+export type RequestOptions<TSchema extends z.ZodType> = {
+  method?: HttpMethod;
+  body?: unknown;
+  schema: TSchema;
+  signal?: AbortSignal;
+};
+
+export type ApiClientConfig = {
+  baseUrl: string;
+  /** Current access token, or null when signed out. */
+  getAccessToken: () => Promise<string | null>;
+  /** Refresh the session and return the new access token, or null if that failed. */
+  refreshAccessToken: () => Promise<string | null>;
+  fetch?: typeof fetch;
+};
+
+export type ApiClient = {
+  request<TSchema extends z.ZodType>(
+    path: string,
+    options: RequestOptions<TSchema>,
+  ): Promise<z.infer<TSchema>>;
+};
+
+/**
+ * The only way the web app talks to the Workaholic API.
+ * Attaches the user's access token, retries once after a session refresh, validates
+ * every response against a schema, and turns failures into typed `ApiError`s.
+ */
+export function createApiClient(config: ApiClientConfig): ApiClient {
+  const fetchImpl = config.fetch ?? fetch;
+  const baseUrl = config.baseUrl.replace(/\/+$/, "");
+
+  async function send(path: string, token: string, method: HttpMethod, body: unknown, signal?: AbortSignal) {
+    const headers: Record<string, string> = { Authorization: `Bearer ${token}` };
+    if (body !== undefined) headers["Content-Type"] = "application/json";
+    try {
+      return await fetchImpl(`${baseUrl}${path}`, {
+        method,
+        headers,
+        body: body === undefined ? undefined : JSON.stringify(body),
+        signal,
+        credentials: "omit",
+      });
+    } catch (error) {
+      if (error instanceof DOMException && error.name === "AbortError") throw error;
+      throw networkError();
+    }
+  }
+
+  return {
+    async request(path, { method = "GET", body, schema, signal }) {
+      const token = await config.getAccessToken();
+      if (!token) {
+        throw new ApiError({
+          status: 401,
+          code: "UNAUTHENTICATED",
+          message: "Please sign in to continue.",
+        });
+      }
+
+      let response = await send(path, token, method, body, signal);
+
+      if (response.status === 401) {
+        // Access tokens are short-lived; one refresh-and-retry covers normal expiry.
+        const refreshed = await config.refreshAccessToken();
+        if (refreshed) response = await send(path, refreshed, method, body, signal);
+      }
+
+      if (!response.ok) throw await apiErrorFromResponse(response);
+
+      const requestId = response.headers.get("X-Request-ID");
+      const payload: unknown = response.status === 204 ? null : await response.json().catch(() => undefined);
+      const parsed = schema.safeParse(payload);
+      if (!parsed.success) throw invalidResponseError(requestId);
+      return parsed.data;
+    },
+  };
+}

@@ -1,0 +1,44 @@
+# Local development infrastructure. Start with: pnpm infra:up
+# Credentials here are for disposable local containers only — never reuse them anywhere else.
+name: workaholic
+
+services:
+  postgres:
+    image: postgres:17.11-alpine
+    environment:
+      POSTGRES_USER: workaholic
+      POSTGRES_PASSWORD: workaholic
+      POSTGRES_DB: workaholic
+    ports:
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./infrastructure/docker/postgres:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U workaholic -d workaholic"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  redis:
+    image: redis:8.10.1-alpine
+    ports:
+      - "127.0.0.1:6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  # Local emulator for Azure Blob Storage, so file code runs the same path as production.
+  azurite:
+    image: mcr.microsoft.com/azure-storage/azurite:3.37.0
+    command: azurite-blob --blobHost 0.0.0.0 --blobPort 10000 --location /data
+    ports:
+      - "127.0.0.1:10000:10000"
+    volumes:
+      - azurite-data:/data
+
+volumes:
+  postgres-data:
+  azurite-data:

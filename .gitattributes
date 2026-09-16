@@ -1,0 +1,9 @@
+# Keep LF line endings in the repository and working tree on every OS.
+# Containers, CI runners and shell tooling all run on Linux.
+* text=auto eol=lf
+
+*.png binary
+*.jpg binary
+*.ico binary
+*.pdf binary
+*.docx binary

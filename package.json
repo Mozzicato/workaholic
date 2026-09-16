@@ -1,0 +1,18 @@
+{
+  "name": "workaholic",
+  "private": true,
+  "packageManager": "pnpm@12.4.2",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "infra:up": "docker compose up -d --wait",
+    "infra:down": "docker compose down",
+    "dev:web": "pnpm --filter @workaholic/web dev",
+    "dev:api": "cd apps/api && uv run uvicorn app.main:app --reload --host 127.0.0.1 --port 8080",
+    "dev:worker": "cd apps/api && uv run celery -A app.workers.celery_app worker --loglevel INFO --pool solo",
+    "db:migrate": "cd apps/api && uv run alembic upgrade head",
+    "check:web": "pnpm --filter @workaholic/web check",
+    "check:api": "cd apps/api && uv run ruff format --check . && uv run ruff check . && uv run mypy app tests alembic/env.py && uv run pytest -q"
+  }
+}
