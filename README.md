@@ -4,6 +4,9 @@ An evidence-first resume builder. Workaholic interviews people about what they'v
 done, turns their answers into evidence they confirm, and writes ATS-readable resumes from
 it — improving the wording, never the facts.
 
+**Live:** web https://workaholic-mauve.vercel.app · API
+https://workaholic-api.proudhill-c444a5b3.germanywestcentral.azurecontainerapps.io
+
 - Product spec: [PRD.md](PRD.md)
 - Infrastructure spec: [AZURE.md](AZURE.md)
 - Decisions: [docs/decisions](docs/decisions/README.md)

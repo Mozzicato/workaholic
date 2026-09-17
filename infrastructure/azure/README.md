@@ -4,8 +4,12 @@ Everything Workaholic runs in Azure. **Terraform in [`terraform/`](terraform/) i
 truth**; the portal is never the only record. Every resource was approved using the process in
 [the cost plan](../../docs/architecture/azure-cost-plan.md).
 
-Subscription: **Azure for Students** · Region: **France Central** · Resource group:
-**workaholic-prod-rg**
+Subscription: **Azure for Students** · Region: **France Central** (Container Apps: Germany West
+Central) · Resource group: **workaholic-prod-rg**
+
+Frontend: **https://workaholic-mauve.vercel.app** (Vercel, outside Azure). The API's
+`CORS_ORIGINS` — set from `cors_origins` in `terraform.tfvars` — must list every browser origin
+that calls it; Vercel preview URLs are not included.
 
 ## Inventory
 
