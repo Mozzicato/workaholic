@@ -22,5 +22,8 @@ output "github_deploy" {
     AZURE_SUBSCRIPTION_ID = var.subscription_id
     AZURE_RESOURCE_GROUP  = azurerm_resource_group.main.name
     ACR_NAME              = azurerm_container_registry.main.name
+    POSTGRES_SERVER       = azurerm_postgresql_flexible_server.main.name
+    POSTGRES_FQDN         = azurerm_postgresql_flexible_server.main.fqdn
+    DEPLOY_DB_USER        = azurerm_user_assigned_identity.github_deploy.name
   }
 }

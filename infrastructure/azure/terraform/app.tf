@@ -213,7 +213,7 @@ resource "azurerm_container_app" "api" {
   ingress {
     external_enabled = true
     target_port      = 8000
-    transport        = "auto"
+    transport        = "http"
 
     traffic_weight {
       latest_revision = true
@@ -254,8 +254,17 @@ resource "azurerm_container_app" "api" {
   }
 
   lifecycle {
-    # CI deploys new images; Terraform must not roll them back.
-    ignore_changes = [template[0].container[0].image]
+    ignore_changes = [
+      # CI deploys new images; Terraform must not roll them back.
+      template[0].container[0].image,
+      # Managed by the Express environment, which normalises these to its own defaults.
+      ingress[0].traffic_weight,
+      template[0].cooldown_period_in_seconds,
+      template[0].polling_interval_in_seconds,
+      template[0].http_scale_rule,
+      template[0].container[0].liveness_probe,
+      template[0].container[0].readiness_probe,
+    ]
   }
 
   depends_on = [
@@ -265,61 +274,7 @@ resource "azurerm_container_app" "api" {
   ]
 }
 
-resource "azurerm_container_app_job" "migrate" {
-  count                        = var.deploy_app ? 1 : 0
-  name                         = "workaholic-migrate"
-  location                     = var.container_apps_location
-  resource_group_name          = azurerm_resource_group.main.name
-  container_app_environment_id = azurerm_container_app_environment.main.id
-  replica_timeout_in_seconds   = 600
-  replica_retry_limit          = 0
-  tags                         = var.tags
-  workload_profile_name        = "Consumption"
-
-  manual_trigger_config {
-    parallelism              = 1
-    replica_completion_count = 1
-  }
-
-  identity {
-    type         = "UserAssigned"
-    identity_ids = [azurerm_user_assigned_identity.api.id]
-  }
-
-  registry {
-    server   = azurerm_container_registry.main.login_server
-    identity = azurerm_user_assigned_identity.api.id
-  }
-
-  template {
-    container {
-      name    = "migrate"
-      image   = var.api_image
-      cpu     = 0.25
-      memory  = "0.5Gi"
-      command = ["alembic", "upgrade", "head"]
-
-      dynamic "env" {
-        for_each = local.runtime_env
-        content {
-          name  = env.key
-          value = env.value
-        }
-      }
-    }
-  }
-
-  lifecycle {
-    ignore_changes = [template[0].container[0].image]
-  }
-
-  depends_on = [
-    azurerm_role_assignment.api_acr_pull,
-    azurerm_postgresql_flexible_server_active_directory_administrator.api,
-  ]
-}
-
-# The deploy identity may update only the API app and start only the migration job.
+# The deploy identity may update only the API app.
 resource "azurerm_role_assignment" "github_app_contributor" {
   count                            = var.deploy_app ? 1 : 0
   scope                            = azurerm_container_app.api[0].id
@@ -328,10 +283,27 @@ resource "azurerm_role_assignment" "github_app_contributor" {
   skip_service_principal_aad_check = true
 }
 
-resource "azurerm_role_assignment" "github_job_contributor" {
-  count                            = var.deploy_app ? 1 : 0
-  scope                            = azurerm_container_app_job.migrate[0].id
-  role_definition_name             = "Container Apps Jobs Contributor"
+# ── Migrations ───────────────────────────────────────────────────────────────
+# Azure created an Express environment for this subscription (France Central refused standard
+# environments), and Express does not support Container Apps jobs. Migrations therefore run
+# from GitHub Actions: the workflow opens a firewall rule for the runner's IP only for the
+# duration of `alembic upgrade head`, authenticating with the deploy identity's Entra token.
+
+resource "azurerm_postgresql_flexible_server_active_directory_administrator" "github_deploy" {
+  server_name         = azurerm_postgresql_flexible_server.main.name
+  resource_group_name = azurerm_resource_group.main.name
+  tenant_id           = data.azurerm_client_config.current.tenant_id
+  object_id           = azurerm_user_assigned_identity.github_deploy.principal_id
+  principal_name      = azurerm_user_assigned_identity.github_deploy.name
+  principal_type      = "ServicePrincipal"
+
+  depends_on = [azurerm_postgresql_flexible_server_active_directory_administrator.api]
+}
+
+# Needed to add and remove the temporary firewall rule. Scoped to the database server only.
+resource "azurerm_role_assignment" "github_postgres_firewall" {
+  scope                            = azurerm_postgresql_flexible_server.main.id
+  role_definition_name             = "Contributor"
   principal_id                     = azurerm_user_assigned_identity.github_deploy.principal_id
   skip_service_principal_aad_check = true
 }

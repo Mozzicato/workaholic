@@ -1,7 +1,7 @@
 name: Deploy API
 
 # Runs after CI succeeds on main: build the image, push it to Azure Container Registry,
-# run database migrations as a Container Apps job, then roll out the API.
+# run database migrations, then roll out the API.
 # Authentication uses OIDC federation — no Azure credentials are stored in GitHub.
 
 on:
@@ -23,7 +23,9 @@ env:
   RESOURCE_GROUP: ${{ vars.AZURE_RESOURCE_GROUP }}
   ACR_NAME: ${{ vars.ACR_NAME }}
   API_APP: workaholic-api
-  MIGRATION_JOB: workaholic-migrate
+  POSTGRES_SERVER: ${{ vars.POSTGRES_SERVER }}
+  POSTGRES_FQDN: ${{ vars.POSTGRES_FQDN }}
+  DEPLOY_DB_USER: ${{ vars.DEPLOY_DB_USER }}
 
 jobs:
   deploy:
@@ -66,25 +68,31 @@ jobs:
             echo "exists=false" >> "$GITHUB_OUTPUT"
           fi
 
+      - uses: astral-sh/setup-uv@v7
+        if: steps.app.outputs.exists == 'true'
+        with:
+          version: "0.12.15"
+
       - name: Run database migrations
         if: steps.app.outputs.exists == 'true'
+        working-directory: apps/api
+        # The Container Apps environment is Express, which doesn't support jobs, so migrations
+        # run here. The runner's IP is allowed through the database firewall only for this step.
         env:
-          IMAGE: ${{ steps.image.outputs.ref }}
+          RULE: gha-${{ github.run_id }}
+          DATABASE_URL: postgresql+asyncpg://${{ vars.DEPLOY_DB_USER }}@${{ vars.POSTGRES_FQDN }}:5432/workaholic?ssl=require
+          DATABASE_AUTH: entra_id
+          # Not the production *app*: selects DefaultAzureCredential, which uses the OIDC login above.
+          ENVIRONMENT: development
         run: |
-          az containerapp job update -g "$RESOURCE_GROUP" -n "$MIGRATION_JOB" --image "$IMAGE" --only-show-errors -o none
-          execution=$(az containerapp job start -g "$RESOURCE_GROUP" -n "$MIGRATION_JOB" --query name -o tsv)
-          echo "Migration execution: $execution"
-          for attempt in $(seq 1 60); do
-            status=$(az containerapp job execution show -g "$RESOURCE_GROUP" -n "$MIGRATION_JOB" \
-              --job-execution-name "$execution" --query properties.status -o tsv)
-            echo "status: $status"
-            case "$status" in
-              Succeeded) exit 0 ;;
-              Failed|Stopped|Degraded) echo "::error::Migration $status"; exit 1 ;;
-            esac
-            sleep 10
-          done
-          echo "::error::Migration timed out"; exit 1
+          ip=$(curl -fsS https://api.ipify.org)
+          cleanup() {
+            az postgres flexible-server firewall-rule delete -g "$RESOURCE_GROUP" -n "$POSTGRES_SERVER" --rule-name "$RULE" --yes --only-show-errors || true
+          }
+          trap cleanup EXIT
+          az postgres flexible-server firewall-rule create -g "$RESOURCE_GROUP" -n "$POSTGRES_SERVER" --rule-name "$RULE" --start-ip-address "$ip" --end-ip-address "$ip" --only-show-errors -o none
+          uv sync --locked --no-dev
+          uv run alembic upgrade head
 
       - name: Deploy API
         if: steps.app.outputs.exists == 'true'

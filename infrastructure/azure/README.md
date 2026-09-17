@@ -18,12 +18,11 @@ Subscription: **Azure for Students** · Region: **France Central** · Resource g
 | 1 | deployments `gpt-5-mini`, `gpt-4.1-mini` | Global Standard, 50K TPM each | $0 idle |
 | 2 | `workaholic-prod-db` | PostgreSQL 17 Flexible, B1ms, 32 GB, Entra-only auth, 7-day backups | ≈ $18/mo running; storage only when stopped |
 | 2 | `workaholicacr` | Container Registry Basic, admin user disabled | ≈ $5/mo |
-| 2 | `workaholic-prod-env` | Container Apps environment (Consumption) | $0 fixed |
+| 2 | `workaholic-prod-env` | Container Apps **Express** environment (preview), Germany West Central | $0 fixed |
 | 2 | `workaholic-api` | Container App, 0.25 vCPU / 0.5 GiB, scale 0–2 | Within free grant at low traffic |
-| 2 | `workaholic-migrate` | Container Apps job (manual), runs `alembic upgrade head` | Seconds per deploy |
 | 2 | `workaholic-prod-logs` | Log Analytics, 30-day retention, 0.1 GB/day cap | $0 under 5 GB/month |
 | 2 | `workaholic-api-id` | User-assigned identity: AcrPull, OpenAI User, PostgreSQL Entra admin | $0 |
-| 2 | `workaholic-github-deploy-id` | OIDC-federated to `main`: AcrPush, app/job contributor only | $0 |
+| 2 | `workaholic-github-deploy-id` | OIDC-federated to `main`: AcrPush, API app contributor, PostgreSQL Entra admin + server contributor (temporary firewall rule for migrations) | $0 |
 
 ## Security model
 
@@ -53,8 +52,20 @@ State is local (`terraform.tfstate`, gitignored) and contains no secrets. Moving
 backend is planned with Stage 3's storage account.
 
 Deployment flow: CI passes on `main` → `.github/workflows/deploy-api.yml` builds the image, pushes
-it to `workaholicacr`, runs `workaholic-migrate` with that image, updates `workaholic-api`, then
-checks `/health` and `/ready`. Terraform ignores image changes so it never rolls back a deploy.
+it to `workaholicacr`, runs `alembic upgrade head` from the runner (firewall opened for the
+runner's IP only during that step), updates `workaholic-api`, then checks `/health` and `/ready`.
+Terraform ignores image changes so it never rolls back a deploy.
+
+### Why Express, and what it implies
+
+Azure refused a standard Container Apps environment in France Central for this subscription
+(`MaxNumberOfEnvironmentsInSubExceeded`) and created an **Express** environment in Germany West
+Central. Express uses the same Consumption per-second pricing and free grant with no environment
+fee, and scales to zero — but it is a **preview with no SLA**, doesn't support Container Apps
+jobs (hence migrations from CI) or custom domains yet. Verified working on 2026-09-17: image pull
+and PostgreSQL/AI access through the user-assigned managed identity.
+
+Source: [Container Apps express FAQ](https://learn.microsoft.com/azure/container-apps/express-faq).
 
 ## Cost controls
 
