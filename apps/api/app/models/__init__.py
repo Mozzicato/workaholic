@@ -1,5 +1,26 @@
 # Import every model here so Alembic autogenerate sees the complete schema.
 from app.models.base import Base
+from app.models.candidate import (
+    CandidateProfile,
+    DocumentType,
+    Evidence,
+    EvidenceSource,
+    EvidenceStatus,
+    ProfileSection,
+    Resume,
+    ResumeStatus,
+)
 from app.models.user import User
 
-__all__ = ["Base", "User"]
+__all__ = [
+    "Base",
+    "CandidateProfile",
+    "DocumentType",
+    "Evidence",
+    "EvidenceSource",
+    "EvidenceStatus",
+    "ProfileSection",
+    "Resume",
+    "ResumeStatus",
+    "User",
+]

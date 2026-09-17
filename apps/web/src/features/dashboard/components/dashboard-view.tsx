@@ -1,12 +1,17 @@
 "use client";
 
-import { FileTextIcon, RotateCwIcon } from "lucide-react";
+import Link from "next/link";
 
-import { Button } from "@/components/ui/button";
+import { LoadFailure } from "@/components/feedback/load-failure";
+import { buttonVariants } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import type { CurrentUser } from "@/features/account/api";
 import { useCurrentUser } from "@/features/account/hooks";
-import { ApiError, errorMessage } from "@/lib/api/errors";
+import { useProfile } from "@/features/profile/hooks";
+import { CreateResumeDialog } from "@/features/resumes/components/create-resume-dialog";
+import { ResumeList } from "@/features/resumes/components/resume-list";
+import { useResumes } from "@/features/resumes/hooks";
+import { cn } from "@/lib/utils";
 
 const PROVIDER_LABELS: Record<string, string> = {
   email: "Email and password",
@@ -14,63 +19,90 @@ const PROVIDER_LABELS: Record<string, string> = {
 };
 
 export function DashboardView() {
-  const { data: user, error, isPending, refetch, isRefetching } = useCurrentUser();
+  const account = useCurrentUser();
+  const resumes = useResumes();
+  const profile = useProfile();
 
-  if (isPending) return <DashboardSkeleton />;
+  // Checked one query at a time: that is what narrows each result to its loaded shape.
+  if (account.isPending) return <DashboardSkeleton />;
+  if (resumes.isPending) return <DashboardSkeleton />;
 
-  if (error) {
+  const retry = () => {
+    void account.refetch();
+    void resumes.refetch();
+  };
+  const retrying = account.isRefetching || resumes.isRefetching;
+
+  if (account.isError) {
     return (
-      <div role="alert" className="mx-auto max-w-md rounded-xl border bg-card p-8 text-center">
-        <h1 className="font-heading text-3xl">We couldn&apos;t load your dashboard</h1>
-        <p className="mt-2 text-sm text-muted-foreground">{errorMessage(error)}</p>
-        <Button className="mt-6" variant="outline" onClick={() => refetch()} disabled={isRefetching}>
-          <RotateCwIcon className={isRefetching ? "animate-spin" : undefined} aria-hidden="true" />
-          Try again
-        </Button>
-        {error instanceof ApiError && error.requestId ? (
-          <p className="mt-4 font-mono text-[11px] text-muted-foreground">Reference: {error.requestId}</p>
-        ) : null}
-      </div>
+      <LoadFailure
+        error={account.error}
+        onRetry={retry}
+        retrying={retrying}
+        title="We couldn't load your dashboard"
+      />
+    );
+  }
+  if (resumes.isError) {
+    return (
+      <LoadFailure
+        error={resumes.error}
+        onRetry={retry}
+        retrying={retrying}
+        title="We couldn't load your resumes"
+      />
     );
   }
 
+  const user = account.data;
+  const profileItems = profile.data
+    ? profile.data.experience.length + profile.data.projects.length + profile.data.skills.length
+    : 0;
+
   return (
     <div className="space-y-10">
-      <header className="space-y-1">
-        <p className="text-sm text-muted-foreground">{greetingForNow()}</p>
-        <h1 className="font-heading text-4xl tracking-tight sm:text-5xl">
-          {user.name ? `Hi, ${firstName(user.name)}` : "Welcome to Workaholic"}
-        </h1>
+      <header className="flex flex-wrap items-end justify-between gap-4">
+        <div className="space-y-1">
+          <p className="text-sm text-muted-foreground">{greetingForNow()}</p>
+          <h1 className="font-heading text-4xl tracking-tight sm:text-5xl">
+            {user.name ? `Hi, ${firstName(user.name)}` : "Welcome to Workaholic"}
+          </h1>
+        </div>
+        {resumes.data.length > 0 ? <CreateResumeDialog /> : null}
       </header>
 
       <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_18rem]">
-        <ResumesSection />
-        <AccountSection user={user} />
+        <section aria-labelledby="resumes-heading" className="space-y-4">
+          <h2 id="resumes-heading" className="text-sm font-medium text-muted-foreground">
+            Your resumes
+          </h2>
+          <ResumeList resumes={resumes.data} />
+        </section>
+
+        <div className="space-y-6">
+          <section aria-labelledby="profile-heading" className="space-y-4">
+            <h2 id="profile-heading" className="text-sm font-medium text-muted-foreground">
+              Your career record
+            </h2>
+            <div className="rounded-xl border bg-card p-5">
+              <p className="text-sm leading-relaxed text-muted-foreground">
+                {profileItems > 0
+                  ? `${profileItems} item${profileItems === 1 ? "" : "s"} recorded so far. Resumes are written from this.`
+                  : "Empty so far. Add what you've done, and resumes get written from it."}
+              </p>
+              <Link
+                href="/profile"
+                className={cn(buttonVariants({ variant: "outline" }), "mt-4 h-9 w-full")}
+              >
+                {profileItems > 0 ? "Review your record" : "Add your experience"}
+              </Link>
+            </div>
+          </section>
+
+          <AccountSection user={user} />
+        </div>
       </div>
     </div>
-  );
-}
-
-function ResumesSection() {
-  return (
-    <section aria-labelledby="resumes-heading" className="space-y-4">
-      <h2 id="resumes-heading" className="text-sm font-medium text-muted-foreground">
-        Your resumes
-      </h2>
-      <div className="relative overflow-hidden rounded-xl border border-dashed border-border bg-card px-6 py-12 text-center sm:px-10">
-        <div className="mx-auto flex size-12 items-center justify-center rounded-full bg-accent text-accent-foreground">
-          <FileTextIcon className="size-5" aria-hidden="true" />
-        </div>
-        <p className="mt-5 font-heading text-2xl">You haven&apos;t created a resume yet.</p>
-        <p className="mx-auto mt-2 max-w-md text-sm leading-relaxed text-muted-foreground">
-          Resume creation is the next part of Workaholic being built. When it arrives, you&apos;ll
-          start here by talking through what you&apos;ve actually done.
-        </p>
-        <Button className="mt-6" size="lg" disabled>
-          Create resume — coming next
-        </Button>
-      </div>
-    </section>
   );
 }
 
@@ -82,10 +114,15 @@ function AccountSection({ user }: { user: CurrentUser }) {
       </h2>
       <dl className="divide-y rounded-xl border bg-card text-sm">
         <AccountRow label="Email" value={user.email ?? "—"} />
-        <AccountRow label="Sign-in method" value={PROVIDER_LABELS[user.auth_provider] ?? user.auth_provider} />
+        <AccountRow
+          label="Sign-in method"
+          value={PROVIDER_LABELS[user.auth_provider] ?? user.auth_provider}
+        />
         <AccountRow
           label="Member since"
-          value={new Intl.DateTimeFormat(undefined, { dateStyle: "long" }).format(new Date(user.created_at))}
+          value={new Intl.DateTimeFormat(undefined, {
+            dateStyle: "long",
+          }).format(new Date(user.created_at))}
         />
       </dl>
     </section>
