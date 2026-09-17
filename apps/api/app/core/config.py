@@ -11,6 +11,14 @@ _API_DIR = Path(__file__).resolve().parents[2]
 _REPO_ROOT = _API_DIR.parent.parent
 
 Environment = Literal["development", "test", "production"]
+AIProviderName = Literal[
+    "disabled", "azure", "openai_compatible", "gemini", "groq", "mistral", "openrouter"
+]
+PresetProviderName = Literal["gemini", "groq", "mistral", "openrouter"]
+AzureAIAuth = Literal["entra_id", "api_key"]
+StructuredOutputMode = Literal["json_schema", "json_object"]
+ReasoningEffort = Literal["none", "minimal", "low", "medium", "high"]
+TokenLimitParam = Literal["max_completion_tokens", "max_tokens"]
 
 # Values come from environment variables. For local development they are also read from
 # the repository-root `.env` (missing files are ignored); in production Azure injects them.
@@ -42,7 +50,9 @@ class Settings(BaseSettings):
     database_pool_size: int = 5
     database_max_overflow: int = 5
 
-    redis_url: str
+    # Optional until a feature needs it (background jobs, rate limiting). Infrastructure is
+    # added incrementally, so the API must run without Redis.
+    redis_url: str | None = None
 
     supabase_url: str
     supabase_secret_key: SecretStr
@@ -51,6 +61,43 @@ class Settings(BaseSettings):
 
     sentry_dsn: str | None = None
     sentry_traces_sample_rate: float = 0.0
+
+    # ── AI provider ──────────────────────────────────────────────────────────
+    # Which LLM backend the application uses. "disabled" keeps AI features off.
+    ai_provider: AIProviderName = "disabled"
+    ai_timeout_seconds: float = 60.0
+    ai_max_retries: int = Field(default=2, ge=0, le=5)
+    ai_max_output_tokens: int = Field(default=4000, ge=256)
+    # Only sent when set; reasoning models bill hidden reasoning tokens as output.
+    ai_reasoning_effort: ReasoningEffort | None = None
+    ai_structured_output_mode: StructuredOutputMode = "json_schema"
+    ai_structured_output_attempts: int = Field(default=2, ge=1, le=4)
+
+    # Azure / Microsoft Foundry (primary). The model is the *deployment name*.
+    azure_ai_endpoint: str | None = None
+    azure_ai_model: str | None = None
+    azure_ai_auth: AzureAIAuth = "entra_id"
+    azure_ai_api_key: SecretStr | None = None
+    # Client ID of the user-assigned managed identity in Azure Container Apps.
+    azure_client_id: str | None = None
+
+    # Any OpenAI-compatible Chat Completions API (Groq, Gemini, Mistral, OpenAI, ...).
+    openai_compatible_base_url: str | None = None
+    openai_compatible_api_key: SecretStr | None = None
+    openai_compatible_model: str | None = None
+    openai_compatible_token_limit_param: TokenLimitParam = "max_completion_tokens"  # noqa: S105
+
+    # Named development/benchmark providers. Fictional data only: free tiers may train on inputs.
+    gemini_api_key: SecretStr | None = None
+    gemini_model: str | None = None
+    groq_api_key: SecretStr | None = None
+    groq_model: str | None = None
+    mistral_api_key: SecretStr | None = None
+    mistral_model: str | None = None
+    openrouter_api_key: SecretStr | None = None
+    openrouter_model: str | None = None
+    # Real resume data may only reach providers with data-processing terms (Azure).
+    ai_allow_non_azure_in_production: bool = False
 
     @field_validator("cors_origins", mode="before")
     @classmethod
@@ -64,10 +111,39 @@ class Settings(BaseSettings):
     def _normalise_supabase_url(cls, value: str) -> str:
         return value.rstrip("/")
 
-    @field_validator("sentry_dsn", mode="before")
+    @field_validator(
+        "sentry_dsn",
+        "redis_url",
+        "azure_ai_endpoint",
+        "azure_ai_model",
+        "azure_ai_api_key",
+        "azure_client_id",
+        "openai_compatible_base_url",
+        "openai_compatible_api_key",
+        "openai_compatible_model",
+        "ai_reasoning_effort",
+        "gemini_api_key",
+        "gemini_model",
+        "groq_api_key",
+        "groq_model",
+        "mistral_api_key",
+        "mistral_model",
+        "openrouter_api_key",
+        "openrouter_model",
+        mode="before",
+    )
     @classmethod
-    def _empty_dsn_is_none(cls, value: object) -> object:
+    def _empty_is_none(cls, value: object) -> object:
         return value or None
+
+    @field_validator("azure_ai_endpoint", "openai_compatible_base_url")
+    @classmethod
+    def _require_https(cls, value: str | None) -> str | None:
+        if value is not None and not value.startswith(
+            ("https://", "http://localhost", "http://127.0.0.1")
+        ):
+            raise ValueError("AI endpoints must use https")
+        return value.rstrip("/") if value else value
 
     @model_validator(mode="after")
     def _check_production_safety(self) -> Self:
@@ -77,6 +153,52 @@ class Settings(BaseSettings):
             if not self.supabase_url.startswith("https://"):
                 raise ValueError("SUPABASE_URL must use https in production")
         return self
+
+    @model_validator(mode="after")
+    def _check_ai_provider(self) -> Self:
+        if self.ai_provider == "azure":
+            missing = [
+                name
+                for name, value in (
+                    ("AZURE_AI_ENDPOINT", self.azure_ai_endpoint),
+                    ("AZURE_AI_MODEL", self.azure_ai_model),
+                )
+                if not value
+            ]
+            if self.azure_ai_auth == "api_key" and not self.azure_ai_api_key:
+                missing.append("AZURE_AI_API_KEY")
+            if missing:
+                raise ValueError(f"AI_PROVIDER=azure requires {', '.join(missing)}")
+        if self.ai_provider == "openai_compatible" and not (
+            self.openai_compatible_base_url and self.openai_compatible_model
+        ):
+            raise ValueError(
+                "AI_PROVIDER=openai_compatible requires OPENAI_COMPATIBLE_BASE_URL "
+                "and OPENAI_COMPATIBLE_MODEL"
+            )
+        if self.ai_provider in ("gemini", "groq", "mistral", "openrouter"):
+            prefix = self.ai_provider.upper()
+            if getattr(self, f"{self.ai_provider}_api_key") is None:
+                raise ValueError(f"AI_PROVIDER={self.ai_provider} requires {prefix}_API_KEY")
+            if getattr(self, f"{self.ai_provider}_model") is None:
+                raise ValueError(f"AI_PROVIDER={self.ai_provider} requires {prefix}_MODEL")
+        if (
+            self.is_production
+            and self.ai_provider not in ("azure", "disabled")
+            and not self.ai_allow_non_azure_in_production
+        ):
+            raise ValueError(
+                "Production must use AI_PROVIDER=azure (or set "
+                "AI_ALLOW_NON_AZURE_IN_PRODUCTION=true after reviewing the provider's data terms)"
+            )
+        return self
+
+    def preset_credentials(self, name: PresetProviderName) -> tuple[str, str]:
+        key: SecretStr | None = getattr(self, f"{name}_api_key")
+        model: str | None = getattr(self, f"{name}_model")
+        if key is None or model is None:
+            raise ValueError(f"{name.upper()}_API_KEY and {name.upper()}_MODEL are required")
+        return key.get_secret_value(), model
 
     @property
     def is_production(self) -> bool:

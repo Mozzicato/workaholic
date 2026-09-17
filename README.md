@@ -7,6 +7,8 @@ it — improving the wording, never the facts.
 - Product spec: [PRD.md](PRD.md)
 - Infrastructure spec: [AZURE.md](AZURE.md)
 - Decisions: [docs/decisions](docs/decisions/README.md)
+- AI platform: [docs/architecture/ai-platform.md](docs/architecture/ai-platform.md)
+- Azure costs: [docs/architecture/azure-cost-plan.md](docs/architecture/azure-cost-plan.md)
 
 ## Repository
 
@@ -59,11 +61,21 @@ Run each in its own terminal:
 ```bash
 pnpm dev:api      # API on http://localhost:8080 (docs at /docs)
 pnpm dev:web      # Web on http://localhost:3000
-pnpm dev:worker   # Celery worker (only needed once background jobs exist)
+pnpm dev:worker   # Celery worker (only needed once background jobs exist; requires REDIS_URL)
 ```
 
 Local services bind to `127.0.0.1`. Use `127.0.0.1` rather than `localhost` in connection
 URLs — on Windows, `localhost` tries IPv6 first and each new connection stalls for ~2 seconds.
+
+## AI
+
+AI is off by default (`AI_PROVIDER=disabled`). To use Azure Foundry locally, run `az login`,
+set `AI_PROVIDER=azure`, `AZURE_AI_ENDPOINT` and `AZURE_AI_MODEL` — no API key is needed. To
+compare models on Workaholic's tasks:
+
+```bash
+cd apps/api && uv run python -m benchmarks.run --models gpt-5-nano,gpt-5-mini --runs 3
+```
 
 ## Checks
 

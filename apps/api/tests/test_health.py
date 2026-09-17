@@ -56,3 +56,15 @@ async def test_unsafe_caller_request_id_is_replaced(
 
     assert response.headers["X-Request-ID"] != unsafe_id
     assert response.headers["X-Request-ID"].startswith("req_")
+
+
+@pytest.mark.usefixtures("db_engine")
+async def test_ready_without_redis_checks_only_configured_dependencies(
+    make_app: AppFactory,
+) -> None:
+    # Redis is added only when a feature needs it; until then readiness must not require it.
+    async with running(make_app(redis_url=None)) as client:
+        response = await client.get("/ready")
+
+    assert response.status_code == 200
+    assert response.json() == {"status": "ready", "checks": {"database": "ok"}}

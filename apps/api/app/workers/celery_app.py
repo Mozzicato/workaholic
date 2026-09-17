@@ -18,6 +18,9 @@ settings = get_settings()
 configure_logging(settings)
 configure_sentry(settings)
 
+if not settings.redis_url:
+    raise RuntimeError("The Celery worker requires REDIS_URL (its message broker).")
+
 celery_app = Celery("workaholic", broker=settings.redis_url)
 celery_app.conf.update(
     task_serializer="json",

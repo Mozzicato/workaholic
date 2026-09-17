@@ -37,15 +37,13 @@ async def health() -> HealthResponse:
     responses={503: {"model": ReadinessResponse}},
 )
 async def ready(request: Request) -> JSONResponse:
-    """Readiness: required dependencies are reachable. Never calls AI providers."""
-    database = request.app.state.database
-    redis = request.app.state.redis
+    """Readiness: configured dependencies are reachable. Never calls AI providers."""
+    probes: dict[str, Awaitable[object]] = {"database": request.app.state.database.ping()}
+    if request.app.state.redis is not None:
+        probes["redis"] = request.app.state.redis.ping()
 
-    database_status, redis_status = await asyncio.gather(
-        _check("database", database.ping()),
-        _check("redis", redis.ping()),
-    )
-    checks = {"database": database_status, "redis": redis_status}
+    statuses = await asyncio.gather(*(_check(name, probe) for name, probe in probes.items()))
+    checks = dict(zip(probes, statuses, strict=True))
     is_ready = all(status == "ok" for status in checks.values())
     body = ReadinessResponse(status="ready" if is_ready else "not_ready", checks=checks)
     return JSONResponse(status_code=200 if is_ready else 503, content=body.model_dump())

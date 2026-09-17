@@ -14,6 +14,8 @@ from app.core.errors import register_error_handlers
 from app.core.logging import configure_logging
 from app.core.request_context import REQUEST_ID_HEADER, RequestContextMiddleware
 from app.core.sentry import configure_sentry
+from app.services.ai.base import LLMProvider
+from app.services.ai.factory import build_llm_provider
 from app.services.auth.base import AuthProvider
 from app.services.auth.supabase import SupabaseAuthProvider
 
@@ -23,6 +25,7 @@ logger = structlog.get_logger(__name__)
 def create_app(
     settings: Settings | None = None,
     auth_provider: AuthProvider | None = None,
+    llm_provider: LLMProvider | None = None,
 ) -> FastAPI:
     settings = settings or get_settings()
     configure_logging(settings)
@@ -32,16 +35,27 @@ def create_app(
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         app.state.settings = settings
         app.state.database = Database(settings)
-        app.state.redis = Redis.from_url(
-            settings.redis_url, socket_connect_timeout=2, socket_timeout=2
+        app.state.redis = (
+            Redis.from_url(settings.redis_url, socket_connect_timeout=2, socket_timeout=2)
+            if settings.redis_url
+            else None
         )
         app.state.auth_provider = auth_provider or SupabaseAuthProvider(settings)
-        logger.info("api_started", environment=settings.environment)
+        app.state.llm = llm_provider or build_llm_provider(settings)
+        logger.info(
+            "api_started",
+            environment=settings.environment,
+            ai_provider=app.state.llm.name if app.state.llm else "disabled",
+            redis_configured=app.state.redis is not None,
+        )
         try:
             yield
         finally:
+            if app.state.llm is not None:
+                await app.state.llm.aclose()
             await app.state.auth_provider.aclose()
-            await app.state.redis.aclose()
+            if app.state.redis is not None:
+                await app.state.redis.aclose()
             await app.state.database.dispose()
             logger.info("api_stopped")
 

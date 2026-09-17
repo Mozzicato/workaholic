@@ -62,7 +62,8 @@ def build_settings(test_env: SuiteEnvironment, **overrides: Any) -> Settings:
         "sentry_dsn": None,
     }
     values.update(overrides)
-    return Settings.model_validate(values)
+    # Ignore the developer's .env (AI keys, providers) so tests are reproducible.
+    return Settings(_env_file=None, **values)
 
 
 # ── Database ────────────────────────────────────────────────────────────────

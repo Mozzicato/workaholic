@@ -4,11 +4,14 @@ version = "0.1.0"
 description = "Workaholic backend API and background workers"
 requires-python = ">=3.12,<3.13"
 dependencies = [
+    "aiohttp>=3.10,<4",
     "alembic>=1.20,<2",
     "asyncpg>=0.31,<0.32",
+    "azure-identity>=1.25,<2",
     "celery[redis]>=5.6,<5.7",
     "fastapi>=0.141,<0.142",
     "httpx>=0.28,<0.29",
+    "openai>=2,<3",
     "pydantic>=2.13,<3",
     "pydantic-settings>=2.15,<3",
     "pyjwt[crypto]>=2.14,<3",

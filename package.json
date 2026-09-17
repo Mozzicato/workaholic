@@ -13,6 +13,6 @@
     "dev:worker": "cd apps/api && uv run celery -A app.workers.celery_app worker --loglevel INFO --pool solo",
     "db:migrate": "cd apps/api && uv run alembic upgrade head",
     "check:web": "pnpm --filter @workaholic/web check",
-    "check:api": "cd apps/api && uv run ruff format --check . && uv run ruff check . && uv run mypy app tests alembic/env.py && uv run pytest -q"
+    "check:api": "cd apps/api && uv run ruff format --check . && uv run ruff check . && uv run mypy app tests benchmarks alembic/env.py && uv run pytest -q"
   }
 }
