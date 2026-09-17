@@ -9,6 +9,8 @@ from app.models.candidate import (
     ProfileSection,
     Resume,
     ResumeStatus,
+    ResumeTemplate,
+    ResumeVersion,
 )
 from app.models.user import User
 
@@ -22,5 +24,7 @@ __all__ = [
     "ProfileSection",
     "Resume",
     "ResumeStatus",
+    "ResumeTemplate",
+    "ResumeVersion",
     "User",
 ]

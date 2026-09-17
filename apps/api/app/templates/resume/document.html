@@ -1,0 +1,158 @@
+{#
+  One structure for all three templates (PRD §20): single column, real headings, selectable
+  text, no tables or sidebars. What differs between templates is the stylesheet and whether
+  education comes before experience.
+
+  Nothing here is generated at render time — no dates, no ids, no randomness — so the same
+  document and template always produce the same bytes (PRD §21).
+#}<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>{{ document.basics.full_name }}{% if document.basics.headline %} — {{ document.basics.headline }}{% endif %}</title>
+    <style>
+{{ css }}
+    </style>
+  </head>
+  <body>
+    <main class="resume">
+      <header class="header">
+        <h1 class="name">{{ document.basics.full_name }}</h1>
+        {%- if document.basics.headline %}
+        <p class="headline">{{ document.basics.headline }}</p>
+        {%- endif %}
+        {%- set contacts = [document.basics.email, document.basics.phone, document.basics.location] | select | list %}
+        {%- if contacts or document.basics.links %}
+        <p class="contact">
+          {%- for contact in contacts %}
+          <span class="contact-item">{{ contact }}</span>
+          {%- endfor %}
+          {%- for link in document.basics.links %}
+          <a class="contact-item" href="{{ link.url }}">{{ link.label }}</a>
+          {%- endfor %}
+        </p>
+        {%- endif %}
+      </header>
+
+      {%- if document.summary %}
+      <section class="section">
+        <h2 class="section-title">Summary</h2>
+        <p class="summary">{{ document.summary }}</p>
+      </section>
+      {%- endif %}
+
+      {%- for section in section_order %}
+
+      {%- if section == "experience" and document.experience %}
+      <section class="section">
+        <h2 class="section-title">Experience</h2>
+        {%- for role in document.experience %}
+        <article class="entry">
+          <div class="entry-head">
+            <h3 class="entry-title">{{ role.title }}</h3>
+            <span class="entry-dates">{{ date_range(role.start_date, role.end_date, role.is_current) }}</span>
+          </div>
+          <div class="entry-sub">
+            <span class="entry-org">{{ role.employer }}</span>
+            {%- if role.location %}<span class="entry-place">{{ role.location }}</span>{% endif %}
+          </div>
+          {%- if role.bullets %}
+          <ul class="bullets">
+            {%- for bullet in role.bullets %}
+            <li>{{ bullet.text }}</li>
+            {%- endfor %}
+          </ul>
+          {%- endif %}
+          {%- if role.technologies %}
+          <p class="tools">{{ role.technologies | join(", ") }}</p>
+          {%- endif %}
+        </article>
+        {%- endfor %}
+      </section>
+      {%- endif %}
+
+      {%- if section == "education" and document.education %}
+      <section class="section">
+        <h2 class="section-title">Education</h2>
+        {%- for entry in document.education %}
+        <article class="entry">
+          <div class="entry-head">
+            <h3 class="entry-title">
+              {{- entry.qualification if entry.qualification else entry.institution -}}
+              {%- if entry.qualification and entry.field_of_study %}, {{ entry.field_of_study }}{% endif -%}
+            </h3>
+            <span class="entry-dates">{{ date_range(entry.start_date, entry.end_date, false) }}</span>
+          </div>
+          {%- if entry.qualification %}
+          <div class="entry-sub">
+            <span class="entry-org">{{ entry.institution }}</span>
+            {%- if entry.location %}<span class="entry-place">{{ entry.location }}</span>{% endif %}
+          </div>
+          {%- endif %}
+          {%- if entry.details %}
+          <ul class="bullets">
+            {%- for detail in entry.details %}
+            <li>{{ detail }}</li>
+            {%- endfor %}
+          </ul>
+          {%- endif %}
+        </article>
+        {%- endfor %}
+      </section>
+      {%- endif %}
+
+      {%- if section == "projects" and document.projects %}
+      <section class="section">
+        <h2 class="section-title">Projects</h2>
+        {%- for project in document.projects %}
+        <article class="entry">
+          <div class="entry-head">
+            <h3 class="entry-title">
+              {%- if project.url %}<a href="{{ project.url }}">{{ project.name }}</a>{% else %}{{ project.name }}{% endif -%}
+            </h3>
+            <span class="entry-dates">{{ date_range(project.start_date, project.end_date, false) }}</span>
+          </div>
+          {%- if project.bullets %}
+          <ul class="bullets">
+            {%- for bullet in project.bullets %}
+            <li>{{ bullet.text }}</li>
+            {%- endfor %}
+          </ul>
+          {%- endif %}
+          {%- if project.technologies %}
+          <p class="tools">{{ project.technologies | join(", ") }}</p>
+          {%- endif %}
+        </article>
+        {%- endfor %}
+      </section>
+      {%- endif %}
+
+      {%- if section == "skills" and document.skills %}
+      <section class="section">
+        <h2 class="section-title">Skills</h2>
+        {%- for group in document.skills %}
+        <p class="skill-group">
+          {%- if group.category %}<span class="skill-category">{{ group.category }}:</span> {% endif -%}
+          {{ group.skills | join(", ") }}
+        </p>
+        {%- endfor %}
+      </section>
+      {%- endif %}
+
+      {%- if section == "certifications" and document.certifications %}
+      <section class="section">
+        <h2 class="section-title">Certifications</h2>
+        {%- for certification in document.certifications %}
+        <p class="certification">
+          <span class="certification-name">{{ certification.name }}</span>
+          {%- if certification.issuer %}<span class="certification-issuer">{{ certification.issuer }}</span>{% endif -%}
+          {%- if certification.issued_date %}<span class="entry-dates">{{ month(certification.issued_date) }}</span>{% endif -%}
+        </p>
+        {%- endfor %}
+      </section>
+      {%- endif %}
+
+      {%- endfor %}
+    </main>
+  </body>
+</html>

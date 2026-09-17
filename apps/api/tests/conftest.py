@@ -24,7 +24,12 @@ from fastapi import FastAPI
 from pydantic import SecretStr
 from pydantic_settings import BaseSettings
 from sqlalchemy import Connection, text
-from sqlalchemy.ext.asyncio import AsyncEngine, create_async_engine
+from sqlalchemy.ext.asyncio import (
+    AsyncEngine,
+    AsyncSession,
+    async_sessionmaker,
+    create_async_engine,
+)
 
 from alembic import command
 from app.core.config import _SETTINGS_CONFIG, Settings
@@ -189,6 +194,16 @@ async def running(app: FastAPI) -> AsyncIterator[httpx.AsyncClient]:
         transport = httpx.ASGITransport(app=manager.app)
         async with httpx.AsyncClient(transport=transport, base_url="http://api.test") as client:
             yield client
+
+
+@pytest_asyncio.fixture
+async def session(db_engine: AsyncEngine) -> AsyncIterator[AsyncSession]:
+    """A session for tests that need to reach past the API, e.g. to write model-proposed evidence.
+
+    Must close: an open transaction here blocks the TRUNCATE that cleans up after each test.
+    """
+    async with async_sessionmaker(db_engine, expire_on_commit=False)() as database_session:
+        yield database_session
 
 
 @pytest_asyncio.fixture

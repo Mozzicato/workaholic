@@ -6,10 +6,16 @@ owner: a missing owner filter is the classic IDOR bug, and it cannot be written 
 
 import uuid
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.candidate import CandidateProfile, Evidence, EvidenceStatus, Resume
+from app.models.candidate import (
+    CandidateProfile,
+    Evidence,
+    EvidenceStatus,
+    Resume,
+    ResumeVersion,
+)
 
 
 class CandidateProfileRepository:
@@ -73,3 +79,39 @@ class ResumeRepository:
 
     async def delete(self, resume: Resume) -> None:
         await self._session.delete(resume)
+
+
+class ResumeVersionRepository:
+    """Versions are immutable once written; there is no update method by design."""
+
+    def __init__(self, session: AsyncSession) -> None:
+        self._session = session
+
+    async def list_for_resume(
+        self, resume_id: uuid.UUID, user_id: uuid.UUID
+    ) -> list[ResumeVersion]:
+        result = await self._session.execute(
+            select(ResumeVersion)
+            .where(ResumeVersion.resume_id == resume_id, ResumeVersion.user_id == user_id)
+            .order_by(ResumeVersion.version_number.desc())
+        )
+        return list(result.scalars())
+
+    async def get_owned(self, version_id: uuid.UUID, user_id: uuid.UUID) -> ResumeVersion | None:
+        result = await self._session.execute(
+            select(ResumeVersion).where(
+                ResumeVersion.id == version_id, ResumeVersion.user_id == user_id
+            )
+        )
+        return result.scalar_one_or_none()
+
+    async def next_version_number(self, resume_id: uuid.UUID) -> int:
+        result = await self._session.execute(
+            select(func.max(ResumeVersion.version_number)).where(
+                ResumeVersion.resume_id == resume_id
+            )
+        )
+        return (result.scalar() or 0) + 1
+
+    def add(self, version: ResumeVersion) -> None:
+        self._session.add(version)

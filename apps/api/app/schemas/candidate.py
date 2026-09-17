@@ -8,7 +8,7 @@ so typos surface immediately instead of being silently stored.
 import re
 import uuid
 from datetime import datetime
-from typing import Annotated, Self
+from typing import Annotated, Any, Self
 
 from pydantic import BaseModel, ConfigDict, Field, HttpUrl, field_validator, model_validator
 
@@ -18,6 +18,7 @@ from app.models.candidate import (
     EvidenceStatus,
     ProfileSection,
     ResumeStatus,
+    ResumeTemplate,
 )
 
 # "2024" or "2024-09". Day precision is noise on a resume.
@@ -208,3 +209,35 @@ class ResumeRead(CandidateModel):
     current_version_id: uuid.UUID | None
     created_at: datetime
     updated_at: datetime
+
+
+class ResumeVersionRead(CandidateModel):
+    model_config = ConfigDict(from_attributes=True, extra="forbid")
+
+    id: uuid.UUID
+    resume_id: uuid.UUID
+    version_number: int
+    label: str
+    template: ResumeTemplate
+    schema_version: str
+    prompt_version: str
+    model: str | None
+    content: dict[str, Any]
+    created_at: datetime
+
+
+class ResumeVersionSummary(CandidateModel):
+    """A version without its content, for listing."""
+
+    model_config = ConfigDict(from_attributes=True, extra="forbid")
+
+    id: uuid.UUID
+    resume_id: uuid.UUID
+    version_number: int
+    label: str
+    template: ResumeTemplate
+    created_at: datetime
+
+
+class GenerateResumeRequest(CandidateModel):
+    template: ResumeTemplate = ResumeTemplate.STANDARD

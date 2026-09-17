@@ -1,14 +1,12 @@
 """Candidate profile, evidence and resumes: ownership, validation and evidence rules."""
 
 import uuid
-from collections.abc import AsyncIterator
 from typing import Any
 
 import httpx
 import pytest
-import pytest_asyncio
 from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.candidate import EvidenceStatus
 from app.models.user import User
@@ -18,13 +16,6 @@ from tests.conftest import FakeIdentityProvider, bearer
 PROFILE = "/api/v1/profile"
 EVIDENCE = "/api/v1/evidence"
 RESUMES = "/api/v1/resumes"
-
-
-@pytest_asyncio.fixture
-async def session(db_engine: AsyncEngine) -> AsyncIterator[AsyncSession]:
-    # Must close: an open transaction here blocks the TRUNCATE that cleans up after each test.
-    async with async_sessionmaker(db_engine, expire_on_commit=False)() as session:
-        yield session
 
 
 def experience_item(**overrides: Any) -> dict[str, Any]:

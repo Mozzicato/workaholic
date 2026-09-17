@@ -63,6 +63,14 @@ class ResumeStatus(StrEnum):
     FAILED = "failed"
 
 
+class ResumeTemplate(StrEnum):
+    """The three V1 templates (PRD §20). All are single-column and parse predictably."""
+
+    STANDARD = "standard"
+    COMPACT = "compact"
+    ACADEMIC = "academic"
+
+
 def _enum(enum_type: type[StrEnum], name: str) -> Enum:
     # Stored as VARCHAR with a CHECK constraint: new values need no PostgreSQL type migration.
     return Enum(
@@ -149,5 +157,37 @@ class Resume(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     status: Mapped[ResumeStatus] = mapped_column(
         _enum(ResumeStatus, "resume_status"), default=ResumeStatus.DRAFT, nullable=False
     )
-    # Set in Phase 3, when generation produces versions.
+    # The version a download or preview serves. Set when generation succeeds.
     current_version_id: Mapped[uuid.UUID | None] = mapped_column()
+
+
+class ResumeVersion(UUIDPrimaryKeyMixin, TimestampMixin, Base):
+    """One generated document. Versions are immutable and kept, so earlier wording is recoverable.
+
+    `content` is a Resume JSON document (`app.schemas.resume_document`), validated against its
+    schema before it is written here. `prompt_version` and `model` record what produced it, so a
+    regression in a prompt can be traced to the documents it affected.
+    """
+
+    __tablename__ = "resume_versions"
+    __table_args__ = (
+        UniqueConstraint("resume_id", "version_number", name="uq_resume_versions_resume_number"),
+        Index("ix_resume_versions_resume_id_created_at", "resume_id", "created_at"),
+    )
+
+    # Denormalised from the resume so that every query can filter by owner directly.
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    )
+    resume_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("resumes.id", ondelete="CASCADE"), nullable=False
+    )
+    version_number: Mapped[int] = mapped_column(nullable=False)
+    label: Mapped[str] = mapped_column(String(120), nullable=False)
+    content: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
+    template: Mapped[ResumeTemplate] = mapped_column(
+        _enum(ResumeTemplate, "resume_template"), default=ResumeTemplate.STANDARD, nullable=False
+    )
+    schema_version: Mapped[str] = mapped_column(String(16), nullable=False)
+    prompt_version: Mapped[str] = mapped_column(String(32), nullable=False)
+    model: Mapped[str | None] = mapped_column(String(120))

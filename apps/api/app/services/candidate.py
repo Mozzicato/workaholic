@@ -19,13 +19,16 @@ from app.models.candidate import (
     Evidence,
     EvidenceSource,
     EvidenceStatus,
+    ProfileSection,
     Resume,
+    ResumeVersion,
 )
 from app.models.user import User
 from app.repositories.candidate import (
     CandidateProfileRepository,
     EvidenceRepository,
     ResumeRepository,
+    ResumeVersionRepository,
 )
 from app.schemas.candidate import (
     CandidateProfileUpdate,
@@ -103,9 +106,19 @@ class EvidenceService:
         return evidence
 
     async def record_model_inference(
-        self, user: User, claim: str, *, source_reference: str | None = None
+        self,
+        user: User,
+        claim: str,
+        *,
+        section: ProfileSection | None = None,
+        item_id: str | None = None,
+        source_reference: str | None = None,
     ) -> Evidence:
-        """Record what a model proposed. Not factual until the user confirms it."""
+        """Record what a model proposed. Not factual until the user confirms it.
+
+        `section` and `item_id` tie the proposal to the profile item it concerns, which is what
+        lets resume generation leave that item out until the user confirms it.
+        """
         profile = await self._profiles.get_or_create(user)
         evidence = Evidence(
             user_id=user.id,
@@ -113,6 +126,8 @@ class EvidenceService:
             claim=claim,
             source=EvidenceSource.MODEL_SUGGESTION,
             source_reference=source_reference,
+            section=section,
+            item_id=item_id,
             status=EvidenceStatus.MODEL_INFERRED,
         )
         self._evidence.add(evidence)
@@ -145,6 +160,7 @@ class ResumeService:
     def __init__(self, session: AsyncSession) -> None:
         self._session = session
         self._resumes = ResumeRepository(session)
+        self._versions = ResumeVersionRepository(session)
         self._profiles = CandidateProfileService(session)
 
     async def list_for_user(self, user: User) -> list[Resume]:
@@ -190,3 +206,17 @@ class ResumeService:
         resume = await self.get(user, resume_id)
         await self._resumes.delete(resume)
         await self._session.commit()
+
+    async def list_versions(self, user: User, resume_id: uuid.UUID) -> list[ResumeVersion]:
+        # Through the resume, so an unknown id is a 404 before any version is read.
+        resume = await self.get(user, resume_id)
+        return await self._versions.list_for_resume(resume.id, user.id)
+
+    async def get_version(
+        self, user: User, resume_id: uuid.UUID, version_id: uuid.UUID
+    ) -> ResumeVersion:
+        resume = await self.get(user, resume_id)
+        version = await self._versions.get_owned(version_id, user.id)
+        if version is None or version.resume_id != resume.id:
+            raise NotFoundError("We couldn't find that version.")
+        return version
