@@ -15,13 +15,10 @@ Reference: https://learn.microsoft.com/azure/foundry/openai/api-version-lifecycl
 
 import httpx
 from azure.core.credentials_async import AsyncTokenCredential
-from azure.identity.aio import (
-    DefaultAzureCredential,
-    ManagedIdentityCredential,
-    get_bearer_token_provider,
-)
+from azure.identity.aio import get_bearer_token_provider
 from openai import AsyncOpenAI
 
+from app.core.azure_identity import create_azure_credential
 from app.core.config import Settings
 from app.services.ai.providers.openai_compatible import OpenAICompatibleProvider
 
@@ -35,13 +32,6 @@ def azure_v1_base_url(endpoint: str) -> str:
     if not endpoint.endswith("/openai/v1"):
         endpoint = f"{endpoint}/openai/v1"
     return f"{endpoint}/"
-
-
-def _default_credential(settings: Settings) -> AsyncTokenCredential:
-    if settings.is_production:
-        # Deterministic in production: only the managed identity, never a developer login.
-        return ManagedIdentityCredential(client_id=settings.azure_client_id)
-    return DefaultAzureCredential(exclude_interactive_browser_credential=True)
 
 
 def build_azure_provider(
@@ -65,7 +55,9 @@ def build_azure_provider(
             http_client=http_client,
         )
     else:
-        token_credential = credential or _default_credential(settings)
+        token_credential = credential or create_azure_credential(
+            production=settings.is_production, client_id=settings.azure_client_id
+        )
         client = AsyncOpenAI(
             base_url=azure_v1_base_url(settings.azure_ai_endpoint),
             # The client calls this before each request; tokens are cached and refreshed.

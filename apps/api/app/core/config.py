@@ -19,6 +19,7 @@ AzureAIAuth = Literal["entra_id", "api_key"]
 StructuredOutputMode = Literal["json_schema", "json_object"]
 ReasoningEffort = Literal["none", "minimal", "low", "medium", "high"]
 TokenLimitParam = Literal["max_completion_tokens", "max_tokens"]
+DatabaseAuth = Literal["password", "entra_id"]
 
 # Values come from environment variables. For local development they are also read from
 # the repository-root `.env` (missing files are ignored); in production Azure injects them.
@@ -34,7 +35,10 @@ class MigrationSettings(BaseSettings):
 
     model_config = _SETTINGS_CONFIG
 
+    environment: Environment = "development"
     database_url: str
+    database_auth: DatabaseAuth = "password"
+    azure_client_id: str | None = None
 
 
 class Settings(BaseSettings):
@@ -47,6 +51,8 @@ class Settings(BaseSettings):
     cors_origins: Annotated[list[str], NoDecode] = Field(default_factory=list)
 
     database_url: str
+    # "entra_id": passwordless, the managed identity's Entra token is the password.
+    database_auth: DatabaseAuth = "password"
     database_pool_size: int = 5
     database_max_overflow: int = 5
 
@@ -55,7 +61,8 @@ class Settings(BaseSettings):
     redis_url: str | None = None
 
     supabase_url: str
-    supabase_secret_key: SecretStr
+    # Not used yet; required only once server-side admin actions (account deletion) ship.
+    supabase_secret_key: SecretStr | None = None
     supabase_jwt_audience: str = "authenticated"
     jwks_cache_ttl_seconds: int = 600
 
@@ -118,6 +125,7 @@ class Settings(BaseSettings):
         "azure_ai_model",
         "azure_ai_api_key",
         "azure_client_id",
+        "supabase_secret_key",
         "openai_compatible_base_url",
         "openai_compatible_api_key",
         "openai_compatible_model",
@@ -152,6 +160,14 @@ class Settings(BaseSettings):
                 raise ValueError("CORS_ORIGINS must list explicit origins in production")
             if not self.supabase_url.startswith("https://"):
                 raise ValueError("SUPABASE_URL must use https in production")
+            uses_entra = self.database_auth == "entra_id" or (
+                self.ai_provider == "azure" and self.azure_ai_auth == "entra_id"
+            )
+            if uses_entra and not self.azure_client_id:
+                raise ValueError(
+                    "AZURE_CLIENT_ID (the user-assigned managed identity) is required in "
+                    "production when Microsoft Entra authentication is used"
+                )
         return self
 
     @model_validator(mode="after")

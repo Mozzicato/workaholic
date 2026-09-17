@@ -7,6 +7,7 @@ from sqlalchemy.ext.asyncio import create_async_engine
 
 from alembic import context
 from app.core.config import MigrationSettings
+from app.core.database import database_connect_args
 from app.models import Base
 
 config = context.config
@@ -42,10 +43,22 @@ def do_run_migrations(connection: Connection) -> None:
 
 
 async def run_async_migrations() -> None:
-    engine = create_async_engine(_database_url(), poolclass=pool.NullPool)
-    async with engine.connect() as connection:
-        await connection.run_sync(do_run_migrations)
-    await engine.dispose()
+    settings = MigrationSettings()
+    connect_args, credential = database_connect_args(
+        settings.database_auth,
+        production=settings.environment == "production",
+        client_id=settings.azure_client_id,
+    )
+    engine = create_async_engine(
+        _database_url(), poolclass=pool.NullPool, connect_args=connect_args
+    )
+    try:
+        async with engine.connect() as connection:
+            await connection.run_sync(do_run_migrations)
+    finally:
+        await engine.dispose()
+        if credential is not None:
+            await credential.close()
 
 
 def run_migrations_online() -> None:

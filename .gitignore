@@ -29,6 +29,7 @@ htmlcov/
 *.tfstate.*
 *.tfvars
 !*.tfvars.example
+*.tfplan
 
 # Test artifacts
 playwright-report/

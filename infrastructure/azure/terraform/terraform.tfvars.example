@@ -1,0 +1,10 @@
+# Copy to terraform.tfvars (gitignored). None of these values are secrets.
+subscription_id      = "00000000-0000-0000-0000-000000000000"
+alert_email          = "you@example.com"
+owner_principal_name = "you_example.com#EXT#@yourtenant.onmicrosoft.com"
+supabase_url         = "https://your-project-ref.supabase.co"
+cors_origins         = ["http://localhost:3000"]
+
+# First apply: false. After CI has pushed the first image, set true with that image.
+deploy_app = false
+api_image  = "workaholicacr.azurecr.io/workaholic-api:initial"

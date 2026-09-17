@@ -1,0 +1,106 @@
+name: Deploy API
+
+# Runs after CI succeeds on main: build the image, push it to Azure Container Registry,
+# run database migrations as a Container Apps job, then roll out the API.
+# Authentication uses OIDC federation — no Azure credentials are stored in GitHub.
+
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  id-token: write
+  contents: read
+
+concurrency:
+  group: deploy-api
+  cancel-in-progress: false
+
+env:
+  RESOURCE_GROUP: ${{ vars.AZURE_RESOURCE_GROUP }}
+  ACR_NAME: ${{ vars.ACR_NAME }}
+  API_APP: workaholic-api
+  MIGRATION_JOB: workaholic-migrate
+
+jobs:
+  deploy:
+    name: Build, migrate, deploy
+    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+
+      - name: Azure login (OIDC)
+        uses: azure/login@v3
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Build and push image
+        id: image
+        env:
+          SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
+        run: |
+          az acr login --name "$ACR_NAME"
+          image="$ACR_NAME.azurecr.io/workaholic-api:$SHA"
+          docker build --tag "$image" apps/api
+          docker push "$image"
+          echo "ref=$image" >> "$GITHUB_OUTPUT"
+
+      - name: Check that the app exists
+        id: app
+        run: |
+          az config set extension.use_dynamic_install=yes_without_prompt --only-show-errors
+          if az containerapp show -g "$RESOURCE_GROUP" -n "$API_APP" --query name -o tsv >/dev/null 2>&1; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "::notice::$API_APP not created yet (Terraform deploy_app=false). Image pushed only."
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Run database migrations
+        if: steps.app.outputs.exists == 'true'
+        env:
+          IMAGE: ${{ steps.image.outputs.ref }}
+        run: |
+          az containerapp job update -g "$RESOURCE_GROUP" -n "$MIGRATION_JOB" --image "$IMAGE" --only-show-errors -o none
+          execution=$(az containerapp job start -g "$RESOURCE_GROUP" -n "$MIGRATION_JOB" --query name -o tsv)
+          echo "Migration execution: $execution"
+          for attempt in $(seq 1 60); do
+            status=$(az containerapp job execution show -g "$RESOURCE_GROUP" -n "$MIGRATION_JOB" \
+              --job-execution-name "$execution" --query properties.status -o tsv)
+            echo "status: $status"
+            case "$status" in
+              Succeeded) exit 0 ;;
+              Failed|Stopped|Degraded) echo "::error::Migration $status"; exit 1 ;;
+            esac
+            sleep 10
+          done
+          echo "::error::Migration timed out"; exit 1
+
+      - name: Deploy API
+        if: steps.app.outputs.exists == 'true'
+        env:
+          IMAGE: ${{ steps.image.outputs.ref }}
+        run: az containerapp update -g "$RESOURCE_GROUP" -n "$API_APP" --image "$IMAGE" --only-show-errors -o none
+
+      - name: Health check
+        if: steps.app.outputs.exists == 'true'
+        run: |
+          fqdn=$(az containerapp show -g "$RESOURCE_GROUP" -n "$API_APP" --query properties.configuration.ingress.fqdn -o tsv)
+          # Scale-to-zero means the first request may cold start.
+          for attempt in $(seq 1 30); do
+            if curl -fsS "https://$fqdn/health" && curl -fsS "https://$fqdn/ready"; then
+              echo; echo "Healthy: https://$fqdn"; exit 0
+            fi
+            sleep 10
+          done
+          echo "::error::API did not become ready"; exit 1
