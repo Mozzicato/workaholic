@@ -51,7 +51,7 @@ optional and `/ready` only checks configured dependencies).
 | --- | --- | --- | --- |
 | **0. Guardrails** ✅ | Register `Microsoft.CognitiveServices`; resource group `workaholic-prod-rg`; annual $100 and monthly $20 budgets with alerts | Done 2026-09-17 | $0 |
 | **1. AI** ✅ | Foundry resource + 2 Global Standard deployments (`gpt-5-mini`, `gpt-4.1-mini`; Data Zone quota is 0); your user has *Cognitive Services OpenAI User* | Done 2026-09-17 | Benchmark ≈ $0.04; $0 idle |
-| 2. First deployment | PostgreSQL B1ms; Container Registry Basic (or GHCR); Container Apps environment + API app (scale to zero); managed identity + role; Log Analytics with cap | When Phase 2 (profiles/resumes) is usable end-to-end | ≈ $23/mo always-on DB + registry; ≈ $5/mo if the DB is stopped outside testing |
+| **2. First deployment** ✅ | PostgreSQL 17 B1ms (Entra-only, France Central); Container Registry Basic; Container Apps environment + API app (scale to zero) + migration job (**Germany West Central** — France Central refused environment creation for this subscription); managed identities + least-privilege roles; Log Analytics capped at 0.1 GB/day; GitHub OIDC deploy identity | Started 2026-09-17 at the owner's request, ahead of Phase 2 | ≈ $23/mo with the DB always on (≈ $18 DB + ≈ $5 registry); ≈ $5–9/mo if the DB is stopped outside testing. Cross-region DB traffic: cents |
 | 3. Files | Storage account (private containers) | When uploads/PDF export ship | Cents |
 | 4. Background work | Redis option above + worker app (scale to zero on queue length) | When the first Celery task ships | $0–14/mo depending on option |
 

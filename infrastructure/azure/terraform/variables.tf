@@ -37,10 +37,13 @@ variable "owner_principal_name" {
   type        = string
 }
 
-variable "github_repository" {
-  description = "owner/name of the repository allowed to deploy through OIDC."
+variable "github_oidc_subject" {
+  description = <<-EOT
+    Exact `sub` claim GitHub issues for pushes to main. This repository uses GitHub's immutable
+    format, which embeds the owner and repository IDs (observed in the first deploy run).
+  EOT
   type        = string
-  default     = "Mozzicato/workaholic"
+  default     = "repo:Mozzicato@178114897/workaholic@1373661678:ref:refs/heads/main"
 }
 
 # ── AI (Stage 1) ─────────────────────────────────────────────────────────────
