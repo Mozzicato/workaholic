@@ -87,10 +87,10 @@ jobs:
         run: |
           ip=$(curl -fsS https://api.ipify.org)
           cleanup() {
-            az postgres flexible-server firewall-rule delete -g "$RESOURCE_GROUP" -n "$POSTGRES_SERVER" --rule-name "$RULE" --yes --only-show-errors || true
+            az postgres flexible-server firewall-rule delete -g "$RESOURCE_GROUP" --server-name "$POSTGRES_SERVER" --name "$RULE" --yes --only-show-errors || true
           }
           trap cleanup EXIT
-          az postgres flexible-server firewall-rule create -g "$RESOURCE_GROUP" -n "$POSTGRES_SERVER" --rule-name "$RULE" --start-ip-address "$ip" --end-ip-address "$ip" --only-show-errors -o none
+          az postgres flexible-server firewall-rule create -g "$RESOURCE_GROUP" --server-name "$POSTGRES_SERVER" --name "$RULE" --start-ip-address "$ip" --end-ip-address "$ip" --only-show-errors -o none
           uv sync --locked --no-dev
           uv run alembic upgrade head
 
