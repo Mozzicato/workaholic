@@ -83,6 +83,17 @@ variable "container_registry_name" {
   default = "workaholicacr"
 }
 
+variable "container_registry_sku" {
+  description = <<-EOT
+    Standard, because the free-account 12-month allowance covers one Standard registry
+    (100 GB storage, 10 webhooks) and does not cover Basic at all. Basic bills at about
+    $5/month against the student credit while buying nothing this project needs.
+    Verified against https://azure.microsoft.com/en-us/pricing/free-services/ on 2026-09-17.
+  EOT
+  type        = string
+  default     = "Standard"
+}
+
 variable "postgres_server_name" {
   type    = string
   default = "workaholic-prod-db"

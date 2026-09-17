@@ -21,7 +21,7 @@ that calls it; Vercel preview URLs are not included.
 | 1 | `workaholic-ai-frc` | Foundry `AIServices` S0, key auth disabled | $0 (pay per token) |
 | 1 | deployments `gpt-5-mini`, `gpt-4.1-mini` | Global Standard, 50K TPM each | $0 idle |
 | 2 | `workaholic-prod-db` | PostgreSQL 17 Flexible, B1ms, 32 GB, Entra-only auth, 7-day backups | ≈ $18/mo running; storage only when stopped |
-| 2 | `workaholicacr` | Container Registry Basic, admin user disabled | ≈ $5/mo |
+| 2 | `workaholicacr` | Container Registry Standard, admin user disabled | $0 — the student offer includes one Standard registry (100 GB) for 12 months; Basic is not included |
 | 2 | `workaholic-prod-env` | Container Apps **Express** environment (preview), Germany West Central | $0 fixed |
 | 2 | `workaholic-api` | Container App, 0.25 vCPU / 0.5 GiB, scale 0–2 | Within free grant at low traffic |
 | 2 | `workaholic-prod-logs` | Log Analytics, 30-day retention, 0.1 GB/day cap | $0 under 5 GB/month |
