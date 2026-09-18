@@ -13,10 +13,7 @@ the check fails twice, generation is blocked and the user is told what was added
 never quietly published with a claim they did not make.
 """
 
-import uuid
 from collections.abc import Sequence
-from dataclasses import dataclass
-from typing import Any
 
 import structlog
 from pydantic import BaseModel, ConfigDict, Field
@@ -27,7 +24,6 @@ from app.models.candidate import (
     CandidateProfile,
     Evidence,
     Resume,
-    ResumeStatus,
     ResumeTemplate,
     ResumeVersion,
 )
@@ -38,7 +34,6 @@ from app.prompts.resume import (
     build_retry_message,
 )
 from app.prompts.resume.generate import BulletInput, GenerationContext
-from app.repositories.candidate import ResumeVersionRepository
 from app.schemas.resume_document import (
     SCHEMA_VERSION,
     Bullet,
@@ -52,12 +47,21 @@ from app.schemas.resume_document import (
     ResumeSkillGroup,
 )
 from app.services.ai.base import ChatMessage, LLMProvider
+from app.services.resume.persistence import save_version
+from app.services.resume.record import (
+    SourceBullet,
+    collect_sources,
+    item_id_of,
+    items,
+    items_awaiting_confirmation,
+    profile_names,
+    skill_names,
+    strings,
+    text_of,
+)
 from app.services.resume.validation import UnsupportedClaim, check_text, find_instruction
 
 logger = structlog.get_logger(__name__)
-
-MAX_BULLETS = 60
-"""A ceiling on how much wording one request may rewrite, so cost per call stays predictable."""
 
 
 class ProfileIncompleteError(AppError):
@@ -114,25 +118,10 @@ class ResumeWording(BaseModel):
     bullets: list[RewrittenBullet]
 
 
-@dataclass(frozen=True, slots=True)
-class _SourceBullet:
-    """A sentence from the record, and where it belongs in the document."""
-
-    id: str
-    kind: str  # "experience" | "project"
-    item_id: str
-    item_index: int
-    bullet_index: int
-    text: str
-    context: str
-    allowed_names: tuple[str, ...]
-
-
 class ResumeGenerationService:
     def __init__(self, session: AsyncSession, llm: LLMProvider) -> None:
         self._session = session
         self._llm = llm
-        self._versions = ResumeVersionRepository(session)
 
     async def generate(
         self,
@@ -143,8 +132,8 @@ class ResumeGenerationService:
         evidence: Sequence[Evidence],
         template: ResumeTemplate = ResumeTemplate.STANDARD,
     ) -> ResumeVersion:
-        blocked_items = _items_awaiting_confirmation(evidence)
-        sources = _collect_sources(profile, blocked_items)
+        blocked_items = items_awaiting_confirmation(evidence)
+        sources = collect_sources(profile, blocked_items)
 
         offenders = [
             (phrase, source.text[:200])
@@ -172,18 +161,18 @@ class ResumeGenerationService:
         )
 
     async def _ask_for_wording(
-        self, resume: Resume, profile: CandidateProfile, sources: Sequence[_SourceBullet]
+        self, resume: Resume, profile: CandidateProfile, sources: Sequence[SourceBullet]
     ) -> tuple[ResumeWording, str]:
         """One attempt, then one corrective retry naming exactly what was invented."""
         context = GenerationContext(
             target_role=resume.target_role,
-            headline=_text(profile.basics.get("headline")),
-            summary=_text(profile.basics.get("summary")),
+            headline=text_of(profile.basics.get("headline")),
+            summary=text_of(profile.basics.get("summary")),
             bullets=[
                 BulletInput(id=source.id, text=source.text, context=source.context)
                 for source in sources
             ],
-            skills=_skill_names(profile),
+            skills=skill_names(profile),
         )
         conversation: list[ChatMessage] = build_generate_messages(context)
 
@@ -222,29 +211,20 @@ class ResumeGenerationService:
         template: ResumeTemplate,
         model: str,
     ) -> ResumeVersion:
-        next_number = await self._versions.next_version_number(resume.id)
-        version = ResumeVersion(
-            user_id=user.id,
-            resume_id=resume.id,
-            version_number=next_number,
-            label=f"Version {next_number}",
+        return await save_version(
+            self._session,
+            user=user,
+            resume=resume,
             content=document.model_dump(mode="json"),
-            template=template,
             schema_version=SCHEMA_VERSION,
             prompt_version=GENERATE_PROMPT_VERSION,
             model=model,
+            template=template,
         )
-        self._versions.add(version)
-        await self._session.flush()
-        resume.current_version_id = version.id
-        resume.status = ResumeStatus.READY
-        await self._session.commit()
-        await self._session.refresh(version)
-        return version
 
 
 def _check_wording(
-    wording: ResumeWording, sources: Sequence[_SourceBullet], profile: CandidateProfile
+    wording: ResumeWording, sources: Sequence[SourceBullet], profile: CandidateProfile
 ) -> list[UnsupportedClaim]:
     by_id = {source.id: source for source in sources}
     returned = {bullet.id: bullet.text for bullet in wording.bullets}
@@ -279,7 +259,7 @@ def _check_wording(
                 location="summary",
                 rewritten=wording.summary,
                 sources=_all_profile_text(profile, sources),
-                allowed_names=_all_profile_names(profile),
+                allowed_names=profile_names(profile),
             )
         )
     return problems
@@ -288,7 +268,7 @@ def _check_wording(
 def _assemble(
     *,
     profile: CandidateProfile,
-    sources: Sequence[_SourceBullet],
+    sources: Sequence[SourceBullet],
     wording: ResumeWording,
     blocked_items: frozenset[str],
 ) -> ResumeDocument:
@@ -296,11 +276,11 @@ def _assemble(
     rewritten = {bullet.id: bullet.text.strip() for bullet in wording.bullets}
 
     experience: list[ResumeExperience] = []
-    for index, item in enumerate(_items(profile.experience)):
-        item_id = _item_id(item, index)
+    for index, item in enumerate(items(profile.experience)):
+        item_id = item_id_of(item, index)
         if item_id in blocked_items:
             continue
-        employer, title = _text(item.get("employer")), _text(item.get("title"))
+        employer, title = text_of(item.get("employer")), text_of(item.get("title"))
         if not (employer or title):
             continue
         bullets = _bullets_for(sources, rewritten, kind="experience", item_index=index)
@@ -309,29 +289,29 @@ def _assemble(
                 item_id=item_id,
                 employer=employer,
                 title=title,
-                location=_text(item.get("location")),
+                location=text_of(item.get("location")),
                 is_current=bool(item.get("is_current", False)),
-                start_date=_text(item.get("start_date")),
-                end_date=None if item.get("is_current") else _text(item.get("end_date")),
+                start_date=text_of(item.get("start_date")),
+                end_date=None if item.get("is_current") else text_of(item.get("end_date")),
                 bullets=bullets,
-                technologies=_strings(item.get("technologies")),
+                technologies=strings(item.get("technologies")),
             )
         )
 
     projects: list[ResumeProject] = []
-    for index, item in enumerate(_items(profile.projects)):
-        item_id = _item_id(item, index)
+    for index, item in enumerate(items(profile.projects)):
+        item_id = item_id_of(item, index)
         if item_id in blocked_items:
             continue
         projects.append(
             ResumeProject(
                 item_id=item_id,
-                name=_text(item.get("name")) or "",
-                url=_text(item.get("url")),
-                start_date=_text(item.get("start_date")),
-                end_date=_text(item.get("end_date")),
+                name=text_of(item.get("name")) or "",
+                url=text_of(item.get("url")),
+                start_date=text_of(item.get("start_date")),
+                end_date=text_of(item.get("end_date")),
                 bullets=_bullets_for(sources, rewritten, kind="project", item_index=index),
-                technologies=_strings(item.get("technologies")),
+                technologies=strings(item.get("technologies")),
             )
         )
 
@@ -347,7 +327,7 @@ def _assemble(
 
 
 def _bullets_for(
-    sources: Sequence[_SourceBullet],
+    sources: Sequence[SourceBullet],
     rewritten: dict[str, str],
     *,
     kind: str,
@@ -369,107 +349,45 @@ def _bullets_for(
     return bullets
 
 
-def _collect_sources(
-    profile: CandidateProfile, blocked_items: frozenset[str]
-) -> list[_SourceBullet]:
-    """Every sentence the user wrote, with the names its rewrite may legitimately use."""
-    sources: list[_SourceBullet] = []
-    profile_names = _all_profile_names(profile)
-
-    for index, item in enumerate(_items(profile.experience)):
-        item_id = _item_id(item, index)
-        if item_id in blocked_items:
-            continue
-        employer = _text(item.get("employer")) or ""
-        title = _text(item.get("title")) or ""
-        context = " at ".join(part for part in (title, employer) if part) or "a role"
-        allowed = (*profile_names, *_strings(item.get("technologies")), employer, title)
-        for position, bullet in enumerate(_strings(item.get("bullets"))):
-            sources.append(
-                _SourceBullet(
-                    id=f"e{index}.b{position}",
-                    kind="experience",
-                    item_id=item_id,
-                    item_index=index,
-                    bullet_index=position,
-                    text=bullet,
-                    context=context,
-                    allowed_names=tuple(name for name in allowed if name),
-                )
-            )
-
-    for index, item in enumerate(_items(profile.projects)):
-        item_id = _item_id(item, index)
-        if item_id in blocked_items:
-            continue
-        name = _text(item.get("name")) or "a project"
-        allowed = (*profile_names, *_strings(item.get("technologies")), name)
-        outcomes = _strings(item.get("outcomes"))
-        description = _text(item.get("description"))
-        texts = ([description] if description else []) + outcomes
-        for position, bullet in enumerate(texts):
-            sources.append(
-                _SourceBullet(
-                    id=f"p{index}.b{position}",
-                    kind="project",
-                    item_id=item_id,
-                    item_index=index,
-                    bullet_index=position,
-                    text=bullet,
-                    context=name,
-                    allowed_names=tuple(entry for entry in allowed if entry),
-                )
-            )
-
-    return sources[:MAX_BULLETS]
-
-
-def _items_awaiting_confirmation(evidence: Sequence[Evidence]) -> frozenset[str]:
-    """Profile items whose evidence a model proposed and the user has not confirmed (PRD §15)."""
-    return frozenset(
-        record.item_id for record in evidence if record.item_id and not record.status.is_factual
-    )
-
-
 def _basics(profile: CandidateProfile) -> ResumeBasics:
     basics = profile.basics if isinstance(profile.basics, dict) else {}
     links = profile.links if isinstance(profile.links, dict) else {}
     named_links = [
         ResumeLink(label=label.title(), url=url)
         for label in ("website", "github", "linkedin")
-        if (url := _text(links.get(label)))
+        if (url := text_of(links.get(label)))
     ]
-    for entry in _items(links.get("other")):
-        label, url = _text(entry.get("label")), _text(entry.get("url"))
+    for entry in items(links.get("other")):
+        label, url = text_of(entry.get("label")), text_of(entry.get("url"))
         if label and url:
             named_links.append(ResumeLink(label=label, url=url))
     return ResumeBasics(
-        full_name=_text(basics.get("full_name")) or "",
-        headline=_text(basics.get("headline")),
-        email=_text(basics.get("email")),
-        phone=_text(basics.get("phone")),
-        location=_text(basics.get("location")),
+        full_name=text_of(basics.get("full_name")) or "",
+        headline=text_of(basics.get("headline")),
+        email=text_of(basics.get("email")),
+        phone=text_of(basics.get("phone")),
+        location=text_of(basics.get("location")),
         links=named_links[:10],
     )
 
 
 def _education(profile: CandidateProfile, blocked_items: frozenset[str]) -> list[ResumeEducation]:
     entries: list[ResumeEducation] = []
-    for index, item in enumerate(_items(profile.education)):
-        item_id = _item_id(item, index)
-        institution = _text(item.get("institution"))
+    for index, item in enumerate(items(profile.education)):
+        item_id = item_id_of(item, index)
+        institution = text_of(item.get("institution"))
         if not institution or item_id in blocked_items:
             continue
         entries.append(
             ResumeEducation(
                 item_id=item_id,
                 institution=institution,
-                qualification=_text(item.get("qualification")),
-                field_of_study=_text(item.get("field_of_study")),
-                location=_text(item.get("location")),
-                start_date=_text(item.get("start_date")),
-                end_date=_text(item.get("end_date")),
-                details=_strings(item.get("details"))[:10],
+                qualification=text_of(item.get("qualification")),
+                field_of_study=text_of(item.get("field_of_study")),
+                location=text_of(item.get("location")),
+                start_date=text_of(item.get("start_date")),
+                end_date=text_of(item.get("end_date")),
+                details=strings(item.get("details"))[:10],
             )
         )
     return entries
@@ -479,17 +397,17 @@ def _certifications(
     profile: CandidateProfile, blocked_items: frozenset[str]
 ) -> list[ResumeCertification]:
     entries: list[ResumeCertification] = []
-    for index, item in enumerate(_items(profile.certifications)):
-        item_id = _item_id(item, index)
-        name = _text(item.get("name"))
+    for index, item in enumerate(items(profile.certifications)):
+        item_id = item_id_of(item, index)
+        name = text_of(item.get("name"))
         if not name or item_id in blocked_items:
             continue
         entries.append(
             ResumeCertification(
                 item_id=item_id,
                 name=name,
-                issuer=_text(item.get("issuer")),
-                issued_date=_text(item.get("issued_date")),
+                issuer=text_of(item.get("issuer")),
+                issued_date=text_of(item.get("issued_date")),
             )
         )
     return entries
@@ -497,79 +415,22 @@ def _certifications(
 
 def _skill_groups(profile: CandidateProfile) -> list[ResumeSkillGroup]:
     grouped: dict[str, list[str]] = {}
-    for item in _items(profile.skills):
-        name = _text(item.get("name"))
+    for item in items(profile.skills):
+        name = text_of(item.get("name"))
         if not name:
             continue
-        grouped.setdefault(_text(item.get("category")) or "", []).append(name)
+        grouped.setdefault(text_of(item.get("category")) or "", []).append(name)
     return [
         ResumeSkillGroup(category=category or None, skills=names[:60])
         for category, names in list(grouped.items())[:12]
     ]
 
 
-def _skill_names(profile: CandidateProfile) -> list[str]:
-    return [name for item in _items(profile.skills) if (name := _text(item.get("name")))]
-
-
-def _all_profile_text(profile: CandidateProfile, sources: Sequence[_SourceBullet]) -> list[str]:
+def _all_profile_text(profile: CandidateProfile, sources: Sequence[SourceBullet]) -> list[str]:
     """Everything the summary may draw on: the user's sentences and their own summary."""
     basics = profile.basics if isinstance(profile.basics, dict) else {}
     texts = [source.text for source in sources]
-    texts.extend(filter(None, (_text(basics.get("summary")), _text(basics.get("headline")))))
+    texts.extend(filter(None, (text_of(basics.get("summary")), text_of(basics.get("headline")))))
     texts.extend(source.context for source in sources)
-    texts.extend(_skill_names(profile))
+    texts.extend(skill_names(profile))
     return texts
-
-
-def _all_profile_names(profile: CandidateProfile) -> tuple[str, ...]:
-    """Names the record holds: employers, titles, schools, tools, skills, the user's own name."""
-    basics = profile.basics if isinstance(profile.basics, dict) else {}
-    names: list[str] = [_text(basics.get("full_name")) or ""]
-    for item in _items(profile.experience):
-        names.extend([_text(item.get("employer")) or "", _text(item.get("title")) or ""])
-        names.extend(_strings(item.get("technologies")))
-    for item in _items(profile.projects):
-        names.append(_text(item.get("name")) or "")
-        names.extend(_strings(item.get("technologies")))
-    for item in _items(profile.education):
-        names.extend(
-            [
-                _text(item.get("institution")) or "",
-                _text(item.get("qualification")) or "",
-                _text(item.get("field_of_study")) or "",
-            ]
-        )
-    for item in _items(profile.certifications):
-        names.extend([_text(item.get("name")) or "", _text(item.get("issuer")) or ""])
-    names.extend(_skill_names(profile))
-    # Names are matched word by word, so multi-word names contribute each of their words.
-    words = {word for name in names if name for word in name.split()}
-    return tuple(sorted(words))
-
-
-def _items(value: Any) -> list[dict[str, Any]]:
-    if not isinstance(value, list):
-        return []
-    return [entry for entry in value if isinstance(entry, dict)]
-
-
-def _strings(value: Any) -> list[str]:
-    if not isinstance(value, list):
-        return []
-    return [text for entry in value if (text := _text(entry))]
-
-
-def _text(value: Any) -> str | None:
-    if not isinstance(value, str):
-        return None
-    stripped = value.strip()
-    return stripped or None
-
-
-def _item_id(item: dict[str, Any], index: int) -> str:
-    """Profile items carry a generated id; fall back to position for records written before that."""
-    raw = item.get("id")
-    if isinstance(raw, str) and raw.strip():
-        return raw.strip()[:36]
-    return str(uuid.uuid5(uuid.NAMESPACE_OID, f"item-{index}"))

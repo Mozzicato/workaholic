@@ -133,6 +133,8 @@ function Loaded({ resume }: { resume: Resume }) {
 
       <GeneratePanel
         resumeId={resume.id}
+        documentType={resume.document_type}
+        targetRole={resume.target_role}
         hasVersions={(versions.data?.length ?? 0) > 0}
         onGenerated={setSelectedVersionId}
       />

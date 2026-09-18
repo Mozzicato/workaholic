@@ -29,11 +29,13 @@ const VERSION = {
   created_at: "2026-09-18T10:00:00Z",
 };
 
-function renderPanel(hasVersions = false) {
+function renderPanel(hasVersions = false, documentType: "resume" | "cover_letter" = "resume") {
   const onGenerated = vi.fn();
   const view = renderWithQueryClient(
     <GeneratePanel
       resumeId={VERSION.resume_id}
+      documentType={documentType}
+      targetRole="Junior Backend Engineer"
       hasVersions={hasVersions}
       onGenerated={onGenerated}
     />,
@@ -159,5 +161,44 @@ describe("GeneratePanel", () => {
     renderPanel(true);
 
     expect(screen.getByRole("button", { name: "Write another draft" })).toBeInTheDocument();
+  });
+});
+
+describe("GeneratePanel for a cover letter", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("will not write a letter without knowing the company", async () => {
+    const { user } = renderPanel(false, "cover_letter");
+
+    const write = screen.getByRole("button", { name: "Write my letter" });
+    expect(write).toBeDisabled();
+    await user.click(write);
+    expect(request).not.toHaveBeenCalled();
+  });
+
+  it("sends the brief, and the advert with it", async () => {
+    request.mockResolvedValue({ ...VERSION, content: {} });
+    const { user } = renderPanel(false, "cover_letter");
+
+    await user.type(screen.getByLabelText("Company"), "Northwind Logistics");
+    await user.type(screen.getByLabelText("The advert (optional)"), "We use Kubernetes.");
+    await user.click(screen.getByRole("button", { name: "Write my letter" }));
+
+    await vi.waitFor(() => expect(request).toHaveBeenCalled());
+    expect(request.mock.calls[0][1].body.brief).toEqual({
+      company: "Northwind Logistics",
+      role: "Junior Backend Engineer",
+      hiring_manager: null,
+      job_advert: "We use Kubernetes.",
+    });
+  });
+
+  it("offers no template choice, because a letter has one shape", () => {
+    renderPanel(false, "cover_letter");
+
+    expect(screen.queryByRole("button", { name: /Academic/ })).not.toBeInTheDocument();
+    expect(screen.getByLabelText("Company")).toBeInTheDocument();
   });
 });

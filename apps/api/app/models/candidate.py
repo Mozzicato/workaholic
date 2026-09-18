@@ -54,6 +54,7 @@ class ProfileSection(StrEnum):
 class DocumentType(StrEnum):
     RESUME = "resume"
     CV = "cv"
+    COVER_LETTER = "cover_letter"
 
 
 class ResumeStatus(StrEnum):

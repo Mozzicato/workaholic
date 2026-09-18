@@ -12,10 +12,13 @@ from jinja2 import Environment, FileSystemLoader, StrictUndefined, select_autoes
 from markupsafe import Markup
 
 from app.models.candidate import ResumeTemplate
+from app.schemas.cover_letter import CoverLetterDocument
 from app.schemas.resume_document import ResumeDocument
 
-_TEMPLATE_DIR = Path(__file__).resolve().parents[2] / "templates" / "resume"
+_TEMPLATES = Path(__file__).resolve().parents[2] / "templates"
+_TEMPLATE_DIR = _TEMPLATES / "resume"
 _STYLE_DIR = _TEMPLATE_DIR / "styles"
+_LETTER_DIR = _TEMPLATES / "letter"
 
 _EN_DASH = "–"  # noqa: RUF001 - a date range takes an en dash, not a hyphen
 
@@ -57,6 +60,30 @@ def render_html(document: ResumeDocument, template: ResumeTemplate) -> str:
     return html if html.endswith("\n") else f"{html}\n"
 
 
+def render_letter_html(document: CoverLetterDocument) -> str:
+    """The complete, self-contained HTML for a cover letter.
+
+    A letter has one layout. The resume templates differ in density and order, which a letter
+    has none of, so there is nothing here for the template choice to change.
+    """
+    jinja_template = _environment(_LETTER_DIR).get_template("document.html")
+    html = jinja_template.render(
+        document=document,
+        css=Markup((_LETTER_DIR / "styles" / "standard.css").read_text(encoding="utf-8")),  # noqa: S704 - a repository file
+        long_date=format_long_date,
+    )
+    return html if html.endswith("\n") else f"{html}\n"
+
+
+def format_long_date(value: str) -> str:
+    """ "2026-09-18" reads as "18 September 2026"."""
+    try:
+        year, month, day = (int(part) for part in value.split("-"))
+        return f"{day} {_MONTH_NAMES[month - 1]} {year}"
+    except (ValueError, IndexError):  # pragma: no cover - the schema rejects this first
+        return value
+
+
 def format_month(value: str | None) -> str:
     """ "2025-06" reads as "June 2025"; a bare year stays as it is."""
     if not value:
@@ -80,9 +107,9 @@ def format_range(start: str | None, end: str | None, is_current: bool) -> str:
 
 
 @functools.cache
-def _environment() -> Environment:
+def _environment(directory: Path = _TEMPLATE_DIR) -> Environment:
     return Environment(
-        loader=FileSystemLoader(_TEMPLATE_DIR),
+        loader=FileSystemLoader(directory),
         autoescape=select_autoescape(["html"]),  # resume content is user text, never markup
         undefined=StrictUndefined,  # a missing field must fail loudly, not render blank
         trim_blocks=True,

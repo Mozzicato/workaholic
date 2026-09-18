@@ -1,8 +1,12 @@
 import uuid
+from typing import Any
 
 from fastapi import APIRouter, Response, status
 
 from app.api.deps import LLM, CurrentUser, Pdf, SessionDep
+from app.core.errors import AppError, ErrorCode
+from app.models.candidate import DocumentType, ResumeTemplate
+from app.prompts.cover_letter import WRITE_PROMPT_VERSION
 from app.schemas.candidate import (
     GenerateResumeRequest,
     ResumeCreate,
@@ -11,11 +15,15 @@ from app.schemas.candidate import (
     ResumeVersionRead,
     ResumeVersionSummary,
 )
+from app.schemas.cover_letter import SCHEMA_VERSION as LETTER_SCHEMA_VERSION
+from app.schemas.cover_letter import CoverLetterDocument
 from app.schemas.errors import AUTH_ERROR_RESPONSES, ErrorResponse
 from app.schemas.resume_document import ResumeDocument
 from app.services.candidate import CandidateProfileService, EvidenceService, ResumeService
+from app.services.cover_letter import CoverLetterService, LetterBrief
 from app.services.resume import ResumeGenerationService
-from app.services.resume.rendering import render_html
+from app.services.resume.persistence import save_version
+from app.services.resume.rendering import render_html, render_letter_html
 
 router = APIRouter(prefix="/resumes", tags=["resumes"])
 
@@ -106,13 +114,40 @@ async def generate_version(
     resume = await ResumeService(session).get(user, resume_id)
     profile = await CandidateProfileService(session).get_or_create(user)
     evidence = await EvidenceService(session).list_for_user(user)
-    version = await ResumeGenerationService(session, llm).generate(
-        user=user,
-        resume=resume,
-        profile=profile,
-        evidence=evidence,
-        template=payload.template,
-    )
+
+    if resume.document_type is DocumentType.COVER_LETTER:
+        if payload.brief is None:
+            raise MissingBriefError()
+        letter, model = await CoverLetterService(session, llm).write(
+            user=user,
+            resume=resume,
+            profile=profile,
+            evidence=evidence,
+            brief=LetterBrief(
+                company=payload.brief.company,
+                role=payload.brief.role,
+                hiring_manager=payload.brief.hiring_manager,
+                job_advert=payload.brief.job_advert,
+            ),
+        )
+        version = await save_version(
+            session,
+            user=user,
+            resume=resume,
+            content=letter.model_dump(mode="json"),
+            schema_version=LETTER_SCHEMA_VERSION,
+            prompt_version=WRITE_PROMPT_VERSION,
+            model=model,
+            template=payload.template,
+        )
+    else:
+        version = await ResumeGenerationService(session, llm).generate(
+            user=user,
+            resume=resume,
+            profile=profile,
+            evidence=evidence,
+            template=payload.template,
+        )
     return ResumeVersionRead.model_validate(version)
 
 
@@ -153,8 +188,10 @@ async def preview_version(
     user: CurrentUser, session: SessionDep, resume_id: uuid.UUID, version_id: uuid.UUID
 ) -> Response:
     """The resume as HTML — the same markup the PDF is printed from."""
-    version = await ResumeService(session).get_version(user, resume_id, version_id)
-    html = render_html(ResumeDocument.model_validate(version.content), version.template)
+    service = ResumeService(session)
+    resume = await service.get(user, resume_id)
+    version = await service.get_version(user, resume_id, version_id)
+    html = _render(resume.document_type, version.content, version.template)
     return Response(
         content=html,
         media_type="text/html; charset=utf-8",
@@ -184,8 +221,7 @@ async def download_version_pdf(
     service = ResumeService(session)
     resume = await service.get(user, resume_id)
     version = await service.get_version(user, resume_id, version_id)
-    document = ResumeDocument.model_validate(version.content)
-    content = await pdf.render(render_html(document, version.template))
+    content = await pdf.render(_render(resume.document_type, version.content, version.template))
     filename = _filename(resume.title, version.version_number)
     return Response(
         content=content,
@@ -205,3 +241,19 @@ def _filename(title: str, version_number: int) -> str:
         for character in title.strip().replace(" ", "-")
     ).strip("-")
     return f"{(safe[:60] or 'resume')}-v{version_number}.pdf"
+
+
+class MissingBriefError(AppError):
+    def __init__(self) -> None:
+        super().__init__(
+            ErrorCode.VALIDATION_ERROR,
+            "A cover letter needs the company you're applying to.",
+            422,
+        )
+
+
+def _render(document_type: DocumentType, content: dict[str, Any], template: ResumeTemplate) -> str:
+    """The right document, validated against its own schema before it is rendered."""
+    if document_type is DocumentType.COVER_LETTER:
+        return render_letter_html(CoverLetterDocument.model_validate(content))
+    return render_html(ResumeDocument.model_validate(content), template)

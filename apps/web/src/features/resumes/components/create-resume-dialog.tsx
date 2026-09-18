@@ -21,22 +21,30 @@ import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel } from "@/c
 import { Input } from "@/components/ui/input";
 import { Spinner } from "@/components/ui/spinner";
 import { FormErrorAlert } from "@/features/auth/components/form-alert";
+import type { DocumentType } from "@/features/resumes/api";
 import { useCreateResume } from "@/features/resumes/hooks";
 import { ApiError, errorMessage } from "@/lib/api/errors";
+import { cn } from "@/lib/utils";
 
 const schema = z.object({
   title: z
     .string()
     .trim()
-    .min(1, "Give this resume a name")
+    .min(1, "Give this document a name")
     .max(120, "Use 120 characters or fewer"),
   target_role: z.string().trim().max(120, "Use 120 characters or fewer"),
 });
+
+const KINDS = [
+  { value: "resume", label: "Resume", description: "Your experience, on one page" },
+  { value: "cover_letter", label: "Cover letter", description: "A letter for one application" },
+] as const satisfies readonly { value: DocumentType; label: string; description: string }[];
 
 type Values = z.infer<typeof schema>;
 
 export function CreateResumeDialog({ variant = "default" }: { variant?: "default" | "outline" }) {
   const [open, setOpen] = useState(false);
+  const [kind, setKind] = useState<DocumentType>("resume");
   const [formError, setFormError] = useState<string | null>(null);
   const router = useRouter();
   const createResume = useCreateResume();
@@ -56,6 +64,7 @@ export function CreateResumeDialog({ variant = "default" }: { variant?: "default
       const resume = await createResume.mutateAsync({
         title: values.title,
         target_role: values.target_role || null,
+        document_type: kind,
       });
       setOpen(false);
       reset();
@@ -64,7 +73,7 @@ export function CreateResumeDialog({ variant = "default" }: { variant?: "default
       // A duplicate name is the one case worth pointing at the field.
       setFormError(
         error instanceof ApiError && error.status === 409
-          ? "You already have a resume with that name."
+          ? "You already have a document with that name."
           : errorMessage(error),
       );
     }
@@ -82,13 +91,13 @@ export function CreateResumeDialog({ variant = "default" }: { variant?: "default
         render={
           <Button size="lg" variant={variant} className="h-10">
             <PlusIcon aria-hidden="true" />
-            Create resume
+            Create
           </Button>
         }
       />
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
-          <DialogTitle className="font-heading text-2xl">Start a resume</DialogTitle>
+          <DialogTitle className="font-heading text-2xl">Start something new</DialogTitle>
           <DialogDescription>
             Name it for yourself, and say which role it&apos;s for. Workaholic builds the content
             from what you tell it — nothing is invented.
@@ -99,12 +108,36 @@ export function CreateResumeDialog({ variant = "default" }: { variant?: "default
           <FieldGroup>
             <FormErrorAlert message={formError} />
 
+            <fieldset>
+              <legend className="text-sm font-medium">What are you making?</legend>
+              <div className="mt-2 grid gap-2 sm:grid-cols-2">
+                {KINDS.map((option) => (
+                  <button
+                    key={option.value}
+                    type="button"
+                    aria-pressed={kind === option.value}
+                    onClick={() => setKind(option.value)}
+                    className={cn(
+                      "rounded-lg border px-3 py-2.5 text-left transition-colors outline-none",
+                      "focus-visible:ring-3 focus-visible:ring-ring/50",
+                      kind === option.value ? "border-primary bg-accent" : "hover:bg-muted/60",
+                    )}
+                  >
+                    <span className="block text-sm font-medium">{option.label}</span>
+                    <span className="block text-xs text-muted-foreground">
+                      {option.description}
+                    </span>
+                  </button>
+                ))}
+              </div>
+            </fieldset>
+
             <Field data-invalid={Boolean(errors.title)}>
               <FieldLabel htmlFor="title">Name</FieldLabel>
               <Input
                 id="title"
                 className="h-10"
-                placeholder="Software engineering resume"
+                placeholder={kind === "resume" ? "Software engineering resume" : "Northwind letter"}
                 aria-invalid={Boolean(errors.title)}
                 {...register("title")}
               />
@@ -123,14 +156,18 @@ export function CreateResumeDialog({ variant = "default" }: { variant?: "default
               {errors.target_role ? (
                 <FieldError errors={[errors.target_role]} />
               ) : (
-                <FieldDescription>Used later to tailor and check the resume.</FieldDescription>
+                <FieldDescription>
+                  {kind === "resume"
+                    ? "Used later to tailor and check the resume."
+                    : "The role the letter is for."}
+                </FieldDescription>
               )}
             </Field>
 
             <DialogFooter showCloseButton>
               <Button type="submit" size="lg" className="h-10" disabled={isSubmitting}>
                 {isSubmitting ? <Spinner /> : null}
-                {isSubmitting ? "Creating…" : "Create resume"}
+                {isSubmitting ? "Creating…" : kind === "resume" ? "Create resume" : "Create letter"}
               </Button>
             </DialogFooter>
           </FieldGroup>

@@ -1,0 +1,51 @@
+{#
+  A cover letter: sender block, date, recipient, salutation, prose, sign-off. One column, no
+  decoration, and nothing generated at render time — the date is carried in the document, so the
+  same version always renders identically.
+#}<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>{{ document.sender.full_name }} — {{ document.recipient.company }}</title>
+    <style>
+{{ css }}
+    </style>
+  </head>
+  <body>
+    <main class="letter">
+      <header class="sender">
+        <p class="name">{{ document.sender.full_name }}</p>
+        {%- set contacts = [document.sender.email, document.sender.phone, document.sender.location] | select | list %}
+        {%- if contacts %}
+        <p class="contact">
+          {%- for contact in contacts %}
+          <span class="contact-item">{{ contact }}</span>
+          {%- endfor %}
+        </p>
+        {%- endif %}
+      </header>
+
+      <p class="date">{{ long_date(document.written_on) }}</p>
+
+      <address class="recipient">
+        {%- if document.recipient.person %}
+        <span>{{ document.recipient.person }}</span>
+        {%- endif %}
+        <span>{{ document.recipient.company }}</span>
+      </address>
+
+      {%- if document.recipient.role %}
+      <p class="subject">Re: {{ document.recipient.role }}</p>
+      {%- endif %}
+
+      <p class="salutation">{{ document.salutation }}</p>
+
+      {%- for paragraph in document.paragraphs %}
+      <p class="body">{{ paragraph.text }}</p>
+      {%- endfor %}
+
+      <p class="closing">{{ document.closing }}</p>
+      <p class="signature">{{ document.sender.full_name }}</p>
+    </main>
+  </body>
+</html>

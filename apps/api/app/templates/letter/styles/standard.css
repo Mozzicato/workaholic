@@ -1,0 +1,84 @@
+/* A plain business letter. Nothing here should draw attention to itself. */
+
+@page {
+  size: A4;
+  margin: 22mm 20mm;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: "Source Serif 4", "Georgia", "Times New Roman", serif;
+  font-size: 11pt;
+  line-height: 1.55;
+  color: #16181d;
+  background: #fff;
+}
+
+.letter {
+  max-width: 170mm;
+  margin: 0 auto;
+}
+
+.sender {
+  margin-bottom: 16pt;
+}
+
+.name {
+  margin: 0;
+  font-size: 13pt;
+  font-weight: 700;
+}
+
+.contact {
+  margin: 2pt 0 0;
+  font-size: 9.5pt;
+  color: #3d424d;
+}
+
+.contact-item + .contact-item::before {
+  content: " · ";
+  color: #8b93a3;
+}
+
+.date {
+  margin: 0 0 16pt;
+  font-size: 10pt;
+  color: #3d424d;
+}
+
+.recipient {
+  margin: 0 0 16pt;
+  font-style: normal;
+}
+
+.recipient span {
+  display: block;
+}
+
+.subject {
+  margin: 0 0 14pt;
+  font-weight: 700;
+}
+
+.salutation {
+  margin: 0 0 12pt;
+}
+
+.body {
+  margin: 0 0 11pt;
+  /* A paragraph split across pages reads badly in a one-page letter. */
+  break-inside: avoid-page;
+}
+
+.closing {
+  margin: 16pt 0 0;
+}
+
+.signature {
+  margin: 20pt 0 0;
+  font-weight: 700;
+}

@@ -246,5 +246,16 @@ class ResumeVersionSummary(CandidateModel):
     created_at: datetime
 
 
+class LetterBriefRequest(CandidateModel):
+    """Who a cover letter is for. Required when the document is a cover letter."""
+
+    company: str = Field(min_length=1, max_length=200)
+    role: str | None = Field(default=None, max_length=120)
+    hiring_manager: str | None = Field(default=None, max_length=120)
+    # The advert shapes which experience leads, and never licenses a claim of its own.
+    job_advert: str | None = Field(default=None, max_length=6000)
+
+
 class GenerateResumeRequest(CandidateModel):
     template: ResumeTemplate = ResumeTemplate.STANDARD
+    brief: LetterBriefRequest | None = None

@@ -25,7 +25,7 @@ const resume = {
 
 async function openDialog() {
   const view = renderWithQueryClient(<CreateResumeDialog />);
-  await view.user.click(screen.getByRole("button", { name: "Create resume" }));
+  await view.user.click(screen.getByRole("button", { name: "Create" }));
   return view.user;
 }
 
@@ -34,12 +34,24 @@ describe("CreateResumeDialog", () => {
     vi.clearAllMocks();
   });
 
+  it("creates a cover letter when that is what was chosen", async () => {
+    request.mockResolvedValue({ ...resume, document_type: "cover_letter" });
+    const user = await openDialog();
+
+    await user.click(screen.getByRole("button", { name: /Cover letter/ }));
+    await user.type(screen.getByLabelText("Name"), "Northwind letter");
+    await user.click(screen.getByRole("button", { name: "Create letter" }));
+
+    await vi.waitFor(() => expect(request).toHaveBeenCalled());
+    expect(request.mock.calls[0][1].body.document_type).toBe("cover_letter");
+  });
+
   it("requires a name before calling the API", async () => {
     const user = await openDialog();
 
     await user.click(screen.getByRole("button", { name: "Create resume" }));
 
-    expect(await screen.findByText("Give this resume a name")).toBeInTheDocument();
+    expect(await screen.findByText("Give this document a name")).toBeInTheDocument();
     expect(request).not.toHaveBeenCalled();
   });
 
@@ -56,7 +68,11 @@ describe("CreateResumeDialog", () => {
       "/api/v1/resumes",
       expect.objectContaining({
         method: "POST",
-        body: { title: "Backend resume", target_role: "Junior Backend Engineer" },
+        body: {
+          title: "Backend resume",
+          target_role: "Junior Backend Engineer",
+          document_type: "resume",
+        },
       }),
     );
   });
@@ -72,6 +88,7 @@ describe("CreateResumeDialog", () => {
     expect(request.mock.calls[0][1].body).toEqual({
       title: "Backend resume",
       target_role: null,
+      document_type: "resume",
     });
   });
 
@@ -85,7 +102,7 @@ describe("CreateResumeDialog", () => {
     await user.click(screen.getByRole("button", { name: "Create resume" }));
 
     expect(
-      await screen.findByText("You already have a resume with that name."),
+      await screen.findByText("You already have a document with that name."),
     ).toBeInTheDocument();
     expect(router.push).not.toHaveBeenCalled();
   });

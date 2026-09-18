@@ -14,6 +14,8 @@ import {
   listResumes,
   listVersions,
   updateResume,
+  type DocumentType,
+  type LetterBrief,
   type ResumeTemplate,
 } from "./api";
 
@@ -39,8 +41,11 @@ export function useResume(id: string) {
 export function useCreateResume() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (body: { title: string; target_role?: string | null }) =>
-      createResume(getApiClient(), body),
+    mutationFn: (body: {
+      title: string;
+      target_role?: string | null;
+      document_type?: DocumentType;
+    }) => createResume(getApiClient(), body),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: resumeKeys.all }),
   });
 }
@@ -90,7 +95,8 @@ export function usePreviewHtml(resumeId: string, versionId: string | undefined) 
 export function useGenerateVersion(resumeId: string) {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (template: ResumeTemplate) => generateVersion(getApiClient(), resumeId, template),
+    mutationFn: ({ template, brief }: { template: ResumeTemplate; brief?: LetterBrief }) =>
+      generateVersion(getApiClient(), resumeId, template, brief),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: versionKeys.all(resumeId) });
       void queryClient.invalidateQueries({ queryKey: resumeKeys.detail(resumeId) });

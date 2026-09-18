@@ -42,6 +42,6 @@ describe("ResumeList", () => {
     renderWithQueryClient(<ResumeList resumes={[]} />);
 
     expect(screen.getByText("You haven't created a resume yet.")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Create resume" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Create" })).toBeInTheDocument();
   });
 });

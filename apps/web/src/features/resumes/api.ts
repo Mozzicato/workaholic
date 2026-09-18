@@ -6,7 +6,7 @@ export const resumeSchema = z.object({
   id: z.uuid(),
   title: z.string(),
   target_role: z.string().nullable(),
-  document_type: z.enum(["resume", "cv"]),
+  document_type: z.enum(["resume", "cv", "cover_letter"]),
   status: z.enum(["draft", "generating", "ready", "failed"]),
   current_version_id: z.uuid().nullable(),
   created_at: z.iso.datetime({ offset: true }),
@@ -25,9 +25,11 @@ export function getResume(api: ApiClient, id: string, signal?: AbortSignal): Pro
   return api.request(`/api/v1/resumes/${id}`, { schema: resumeSchema, signal });
 }
 
+export type DocumentType = Resume["document_type"];
+
 export function createResume(
   api: ApiClient,
-  body: { title: string; target_role?: string | null },
+  body: { title: string; target_role?: string | null; document_type?: DocumentType },
 ): Promise<Resume> {
   return api.request("/api/v1/resumes", {
     method: "POST",
@@ -94,14 +96,23 @@ export function listVersions(
   });
 }
 
+/** Who a cover letter is for. Ignored for a resume, required for a letter. */
+export type LetterBrief = {
+  company: string;
+  role?: string | null;
+  hiring_manager?: string | null;
+  job_advert?: string | null;
+};
+
 export function generateVersion(
   api: ApiClient,
   resumeId: string,
   template: ResumeTemplate,
+  brief?: LetterBrief,
 ): Promise<ResumeVersion> {
   return api.request(`/api/v1/resumes/${resumeId}/versions`, {
     method: "POST",
-    body: { template },
+    body: brief ? { template, brief } : { template },
     schema: versionSchema,
   });
 }
