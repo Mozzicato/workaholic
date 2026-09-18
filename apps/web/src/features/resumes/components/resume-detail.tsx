@@ -1,7 +1,7 @@
 "use client";
 
 import { zodResolver } from "@hookform/resolvers/zod";
-import { ArrowLeftIcon, Trash2Icon } from "lucide-react";
+import { ArrowLeftIcon, MessagesSquareIcon, Trash2Icon } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
@@ -11,7 +11,7 @@ import { z } from "zod";
 
 import { LoadFailure } from "@/components/feedback/load-failure";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import {
   Dialog,
   DialogContent,
@@ -120,12 +120,15 @@ function Loaded({ resume }: { resume: Resume }) {
             ? `Your career record holds ${recordItems} item${recordItems === 1 ? "" : "s"}. A resume will only ever use what's in there.`
             : "Your career record is empty. Add your experience first — a resume can only use what you've told Workaholic."}
         </p>
-        <Link
-          href={routes.profile}
-          className="mt-4 inline-flex text-sm underline underline-offset-4 hover:text-foreground"
-        >
-          {recordItems > 0 ? "Review your career record" : "Add your experience"}
-        </Link>
+        <div className="mt-5 flex flex-wrap gap-3">
+          <Link href={routes.interview(resume.id)} className={buttonVariants()}>
+            <MessagesSquareIcon aria-hidden="true" />
+            {recordItems > 0 ? "Add more by interview" : "Start with an interview"}
+          </Link>
+          <Link href={routes.profile} className={buttonVariants({ variant: "outline" })}>
+            {recordItems > 0 ? "Review your record" : "Fill it in myself"}
+          </Link>
+        </div>
       </section>
 
       <GeneratePanel
