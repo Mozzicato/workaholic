@@ -34,27 +34,34 @@ def _build_azure(
     if not settings.azure_ai_endpoint:
         raise ValueError("Azure speech requires AZURE_AI_ENDPOINT")
 
-    shared = {
-        "azure_endpoint": settings.azure_ai_endpoint.rstrip("/"),
-        "api_version": settings.azure_stt_api_version,
-        "timeout": settings.stt_timeout_seconds,
-        "max_retries": settings.ai_max_retries,
-        "http_client": http_client,
-    }
-
+    endpoint = settings.azure_ai_endpoint.rstrip("/")
     on_close = None
+
+    # Arguments are passed explicitly rather than unpacked: these overloads are keyword-only,
+    # and a dict hides which combination is actually being used.
     if settings.azure_ai_auth == "api_key":
         if settings.azure_ai_api_key is None:
             raise ValueError("AZURE_AI_AUTH=api_key requires AZURE_AI_API_KEY")
-        client = AsyncAzureOpenAI(api_key=settings.azure_ai_api_key.get_secret_value(), **shared)  # type: ignore[arg-type]
+        client = AsyncAzureOpenAI(
+            azure_endpoint=endpoint,
+            api_version=settings.azure_stt_api_version,
+            api_key=settings.azure_ai_api_key.get_secret_value(),
+            timeout=settings.stt_timeout_seconds,
+            max_retries=settings.ai_max_retries,
+            http_client=http_client,
+        )
     else:
         # The same Entra identity that reaches the chat models reaches the audio ones.
         credential = create_azure_credential(
             production=settings.is_production, client_id=settings.azure_client_id
         )
         client = AsyncAzureOpenAI(
+            azure_endpoint=endpoint,
+            api_version=settings.azure_stt_api_version,
             azure_ad_token_provider=get_bearer_token_provider(credential, AZURE_AI_TOKEN_SCOPE),
-            **shared,  # type: ignore[arg-type]
+            timeout=settings.stt_timeout_seconds,
+            max_retries=settings.ai_max_retries,
+            http_client=http_client,
         )
         on_close = credential.close
 
