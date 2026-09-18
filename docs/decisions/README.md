@@ -12,5 +12,6 @@ rather than editing an accepted one; mark superseded records as such.
 | [005](ADR-005-resume-generation-facts-from-the-record.md) | The model writes wording; the record supplies the facts |
 | [006](ADR-006-the-interview-asks-what-the-record-lacks.md) | Code chooses the interview question; the model only phrases it |
 | [007](ADR-007-voice-is-an-interface-not-an-authority.md) | Voice is an interface over the interview; the transcript is not the record |
+| [008](ADR-008-the-advert-shapes-a-letter-but-never-supplies-it.md) | A job advert may shape a cover letter, but never supply a claim to it |
 
 Planned as their phases land: job tailoring · ATS checks · document upload.
