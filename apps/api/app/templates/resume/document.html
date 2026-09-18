@@ -49,13 +49,15 @@
         {%- for role in document.experience %}
         <article class="entry">
           <div class="entry-head">
-            <h3 class="entry-title">{{ role.title }}</h3>
+            <h3 class="entry-title">{{ role.title if role.title else role.employer }}</h3>
             <span class="entry-dates">{{ date_range(role.start_date, role.end_date, role.is_current) }}</span>
           </div>
+          {%- if (role.title and role.employer) or role.location %}
           <div class="entry-sub">
-            <span class="entry-org">{{ role.employer }}</span>
+            {%- if role.title and role.employer %}<span class="entry-org">{{ role.employer }}</span>{% endif %}
             {%- if role.location %}<span class="entry-place">{{ role.location }}</span>{% endif %}
           </div>
+          {%- endif %}
           {%- if role.bullets %}
           <ul class="bullets">
             {%- for bullet in role.bullets %}

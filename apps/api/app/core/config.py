@@ -15,6 +15,8 @@ AIProviderName = Literal[
     "disabled", "azure", "openai_compatible", "gemini", "groq", "mistral", "openrouter"
 ]
 PresetProviderName = Literal["gemini", "groq", "mistral", "openrouter"]
+# Speech runs on the same providers, so a change of AI platform carries voice with it.
+STTProviderName = Literal["disabled", "azure", "groq"]
 AzureAIAuth = Literal["entra_id", "api_key"]
 StructuredOutputMode = Literal["json_schema", "json_object"]
 ReasoningEffort = Literal["none", "minimal", "low", "medium", "high"]
@@ -79,6 +81,19 @@ class Settings(BaseSettings):
     ai_reasoning_effort: ReasoningEffort | None = None
     ai_structured_output_mode: StructuredOutputMode = "json_schema"
     ai_structured_output_attempts: int = Field(default=2, ge=1, le=4)
+
+    # ── Speech to text ───────────────────────────────────────────────────────
+    # Voice is an interface over the interview (PRD section 26); "disabled" leaves the
+    # interview text-only, which it is designed to work as.
+    stt_provider: STTProviderName = "disabled"
+    stt_model: str = "gpt-4o-transcribe"
+    stt_timeout_seconds: float = 120.0
+    # Audio is not served by the Azure OpenAI v1 API: transcription is only available on the
+    # deployment-scoped path, which requires a dated API version (verified against the live
+    # resource, 2026-09-18 — /openai/v1/audio/transcriptions answers DeploymentNotFound).
+    azure_stt_api_version: str = "2025-04-01-preview"
+    # A spoken answer, not a lecture. Enforced before any audio reaches a provider.
+    stt_max_seconds: int = Field(default=180, ge=10, le=600)
 
     # Azure / Microsoft Foundry (primary). The model is the *deployment name*.
     azure_ai_endpoint: str | None = None
@@ -168,6 +183,14 @@ class Settings(BaseSettings):
                     "AZURE_CLIENT_ID (the user-assigned managed identity) is required in "
                     "production when Microsoft Entra authentication is used"
                 )
+        return self
+
+    @model_validator(mode="after")
+    def _check_speech_provider(self) -> Self:
+        if self.stt_provider == "azure" and not self.azure_ai_endpoint:
+            raise ValueError("STT_PROVIDER=azure requires AZURE_AI_ENDPOINT")
+        if not self.stt_model and self.stt_provider != "disabled":
+            raise ValueError("A speech provider requires STT_MODEL")
         return self
 
     @model_validator(mode="after")

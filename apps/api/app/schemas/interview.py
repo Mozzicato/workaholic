@@ -59,3 +59,9 @@ class TurnRead(InterviewModel):
     #  Things the model proposed that the answer did not support. Shown so nothing is silent.
     dropped: list[str]
     completed: bool
+
+
+class TranscriptionRead(InterviewModel):
+    """What was heard. Shown to the person to check; nothing is recorded until they send it."""
+
+    text: str

@@ -300,12 +300,15 @@ def _assemble(
         item_id = _item_id(item, index)
         if item_id in blocked_items:
             continue
+        employer, title = _text(item.get("employer")), _text(item.get("title"))
+        if not (employer or title):
+            continue
         bullets = _bullets_for(sources, rewritten, kind="experience", item_index=index)
         experience.append(
             ResumeExperience(
                 item_id=item_id,
-                employer=_text(item.get("employer")) or "",
-                title=_text(item.get("title")) or "",
+                employer=employer,
+                title=title,
                 location=_text(item.get("location")),
                 is_current=bool(item.get("is_current", False)),
                 start_date=_text(item.get("start_date")),

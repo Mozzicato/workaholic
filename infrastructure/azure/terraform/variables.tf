@@ -62,13 +62,35 @@ variable "ai_deployments" {
   default = {
     "gpt-5-mini"   = { version = "2025-08-07", capacity = 50 }
     "gpt-4.1-mini" = { version = "2025-04-14", capacity = 50 }
+    # Speech-to-text for the voice interview (PRD section 27). Audio input is billed per token,
+    # about $0.22 per hour of speech, and nothing is charged while it sits unused.
+    "gpt-4o-transcribe" = { version = "2025-03-20", capacity = 50 }
   }
+}
+
+variable "ai_adopted_deployments" {
+  description = <<-EOT
+    Deployments that existed in Azure before Terraform managed them, and are therefore imported
+    rather than created. A new deployment must not be listed here: there would be nothing to
+    import and the plan would fail.
+  EOT
+  type        = set(string)
+  default     = ["gpt-5-mini", "gpt-4.1-mini"]
 }
 
 variable "ai_model" {
   description = "Deployment the API uses by default (chosen by benchmark)."
   type        = string
   default     = "gpt-5-mini"
+}
+
+variable "stt_model" {
+  description = <<-EOT
+    Speech-to-text deployment for the voice interview. Billed per audio token, about $0.22 per
+    hour of speech (verified, Retail Prices API, 2026-09-18), and nothing while unused.
+  EOT
+  type        = string
+  default     = "gpt-4o-transcribe"
 }
 
 variable "ai_reasoning_effort" {

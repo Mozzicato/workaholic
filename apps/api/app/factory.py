@@ -19,6 +19,8 @@ from app.services.ai.factory import build_llm_provider
 from app.services.auth.base import AuthProvider
 from app.services.auth.supabase import SupabaseAuthProvider
 from app.services.resume.pdf import PdfRenderer
+from app.services.speech.base import SpeechToTextProvider
+from app.services.speech.factory import build_speech_provider
 
 logger = structlog.get_logger(__name__)
 
@@ -27,6 +29,7 @@ def create_app(
     settings: Settings | None = None,
     auth_provider: AuthProvider | None = None,
     llm_provider: LLMProvider | None = None,
+    speech_provider: SpeechToTextProvider | None = None,
 ) -> FastAPI:
     settings = settings or get_settings()
     configure_logging(settings)
@@ -45,10 +48,12 @@ def create_app(
         app.state.llm = llm_provider or build_llm_provider(settings)
         # The browser starts on the first PDF, not at boot: most requests never need one.
         app.state.pdf_renderer = PdfRenderer()
+        app.state.speech = speech_provider or build_speech_provider(settings)
         logger.info(
             "api_started",
             environment=settings.environment,
             ai_provider=app.state.llm.name if app.state.llm else "disabled",
+            speech_provider=app.state.speech.name if app.state.speech else "disabled",
             redis_configured=app.state.redis is not None,
         )
         try:
@@ -57,6 +62,8 @@ def create_app(
             await app.state.pdf_renderer.stop()
             if app.state.llm is not None:
                 await app.state.llm.aclose()
+            if app.state.speech is not None:
+                await app.state.speech.aclose()
             await app.state.auth_provider.aclose()
             if app.state.redis is not None:
                 await app.state.redis.aclose()

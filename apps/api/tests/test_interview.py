@@ -202,6 +202,30 @@ class TestRecordingAnswers:
         assert roles[0]["bullets"] == ["fixed the invoice import job so it stopped failing"]
         assert second.json()["recorded"]
 
+    async def test_a_role_known_only_by_employer_is_still_valid_to_read_and_write(
+        self, make_app: AppFactory, idp: FakeIdentityProvider
+    ) -> None:
+        """An interview learns the employer before the title. The record must survive that."""
+        llm = Scripted(
+            facts(employer="Lumen Freight", title="Intern"),
+            questions=["Where have you worked?", "What did you do?"],
+        )
+        async with running(app_with(llm, make_app)) as client:
+            headers = await sign_in(client, idp)
+            started = await start(client, headers)
+
+            # "Intern" is not in the answer, so only the employer is supported by it.
+            turn = await answer(
+                client, headers, started["session"]["id"], "i interned at lumen freight"
+            )
+            profile = await client.get("/api/v1/profile", headers=headers)
+
+        assert turn.status_code == 201
+        assert profile.status_code == 200, "a half-known role must still read back"
+        role = profile.json()["experience"][0]
+        assert role["employer"] == "Lumen Freight"
+        assert role["title"] is None
+
     async def test_every_recorded_fact_is_evidence_the_user_provided(
         self, make_app: AppFactory, idp: FakeIdentityProvider
     ) -> None:

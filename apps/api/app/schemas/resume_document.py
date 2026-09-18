@@ -56,8 +56,9 @@ class Bullet(DocumentModel):
 
 class ResumeExperience(DocumentModel):
     item_id: str = Field(min_length=1, max_length=36)
-    employer: str = Field(min_length=1, max_length=120)
-    title: str = Field(min_length=1, max_length=120)
+    # One may be absent: a record can know where without yet knowing what they were called.
+    employer: str | None = Field(default=None, max_length=120)
+    title: str | None = Field(default=None, max_length=120)
     location: str | None = Field(default=None, max_length=120)
     is_current: bool = False
     start_date: MonthString | None = None
@@ -67,6 +68,8 @@ class ResumeExperience(DocumentModel):
 
     @model_validator(mode="after")
     def check_dates(self) -> "ResumeExperience":
+        if not (self.employer or self.title):
+            raise ValueError("A role needs an employer or a job title")
         if self.is_current and self.end_date is not None:
             raise ValueError("A current role cannot have an end date")
         if (

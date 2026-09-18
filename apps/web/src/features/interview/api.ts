@@ -72,3 +72,21 @@ export function abandonInterview(api: ApiClient, interviewId: string): Promise<I
     schema: sessionSchema,
   });
 }
+
+export const transcriptionSchema = z.object({ text: z.string() });
+
+/** Sends one recording and gets back what was heard. The audio is not stored anywhere. */
+export async function transcribe(
+  api: ApiClient,
+  interviewId: string,
+  recording: Blob,
+): Promise<string> {
+  const form = new FormData();
+  // The extension matters to the API only as a hint; the content type is what it checks.
+  const extension = recording.type.includes("mp4") ? "m4a" : "webm";
+  form.append("audio", recording, `answer.${extension}`);
+  const { text } = await api.upload(`/api/v1/interviews/${interviewId}/transcriptions`, form, {
+    schema: transcriptionSchema,
+  });
+  return text;
+}

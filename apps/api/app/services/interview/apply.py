@@ -80,8 +80,8 @@ def apply_facts(
     if facts.employer or facts.title:
         role = {
             "id": str(uuid.uuid4()),
-            "employer": _title_if_flat(facts.employer),
-            "title": _title_if_flat(facts.title),
+            "employer": _title_if_flat(facts.employer) or None,
+            "title": _title_if_flat(facts.title) or None,
             "is_current": facts.is_current,
             "start_date": facts.start_date or None,
             "end_date": facts.end_date or None,
@@ -119,7 +119,7 @@ def apply_facts(
         education = sections.setdefault("education", [])
         entry = {
             "id": str(uuid.uuid4()),
-            "institution": _title_if_flat(facts.institution),
+            "institution": _title_if_flat(facts.institution) or None,
             "qualification": _title_if_flat(facts.qualification) or None,
             "field_of_study": facts.field_of_study or None,
             "start_date": facts.start_date or None,

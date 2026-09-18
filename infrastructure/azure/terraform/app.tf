@@ -188,6 +188,9 @@ locals {
     AZURE_AI_MODEL      = var.ai_model
     AZURE_AI_AUTH       = "entra_id"
     AI_REASONING_EFFORT = var.ai_reasoning_effort
+    # Voice runs on the same resource and the same managed identity as the chat models.
+    STT_PROVIDER = "azure"
+    STT_MODEL    = var.stt_model
   })
 }
 

@@ -81,17 +81,24 @@ class Links(CandidateModel):
 
 
 class ExperienceItem(DatedItem):
-    employer: ShortText
-    title: ShortText
+    # Either may be unknown while an interview is still in progress; at least one must be known.
+    employer: ShortText | None = None
+    title: ShortText | None = None
     location: ShortText | None = None
     is_current: bool = False
     bullets: list[Bullet] = Field(default_factory=list, max_length=20)
     technologies: list[ShortText] = Field(default_factory=list, max_length=40)
 
+    @model_validator(mode="after")
+    def check_identifiable(self) -> Self:
+        if not (self.employer or self.title):
+            raise ValueError("A role needs an employer or a job title")
+        return self
+
 
 class EducationItem(DatedItem):
     institution: ShortText
-    qualification: ShortText
+    qualification: ShortText | None = None
     field_of_study: ShortText | None = None
     grade: ShortText | None = None
 

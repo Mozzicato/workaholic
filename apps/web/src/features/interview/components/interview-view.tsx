@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowLeftIcon, CheckIcon, SendIcon } from "lucide-react";
+import { ArrowLeftIcon, CheckIcon, MicIcon, SendIcon, SquareIcon } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
@@ -16,7 +16,9 @@ import {
   useInterview,
   useSendAnswer,
   useStartInterview,
+  useTranscribe,
 } from "@/features/interview/hooks";
+import { useRecorder } from "@/features/interview/use-recorder";
 import { useResume } from "@/features/resumes/hooks";
 import { errorMessage } from "@/lib/api/errors";
 import { routes } from "@/lib/routes";
@@ -87,6 +89,8 @@ function Conversation({ interviewId, resumeId }: { interviewId: string; resumeId
   const interview = useInterview(interviewId);
   const send = useSendAnswer(interviewId);
   const abandon = useAbandonInterview(interviewId);
+  const transcribeAnswer = useTranscribe(interviewId);
+  const recorder = useRecorder();
   const [draft, setDraft] = useState("");
   const [turns, setTurns] = useState<Record<string, Turn>>({});
   const endOfTranscript = useRef<HTMLDivElement>(null);
@@ -124,6 +128,28 @@ function Conversation({ interviewId, resumeId }: { interviewId: string; resumeId
     }
   }
 
+  async function onRecord() {
+    if (recorder.state === "recording") {
+      const recording = await recorder.stop();
+      if (!recording) return;
+      try {
+        const heard = await transcribeAnswer.mutateAsync(recording);
+        // Into the box, not into the record: they read it back before it counts.
+        setDraft((current) => (current ? `${current.trim()} ${heard}` : heard));
+      } catch (error) {
+        toast.error(errorMessage(error));
+      }
+      return;
+    }
+    try {
+      await recorder.start();
+    } catch {
+      toast.error("We couldn't use your microphone. You can type your answer instead.");
+    }
+  }
+
+  const busy = send.isPending || transcribeAnswer.isPending;
+
   return (
     <div className="space-y-4">
       <div className="space-y-4 rounded-xl border bg-card p-5 sm:p-6">
@@ -159,8 +185,10 @@ function Conversation({ interviewId, resumeId }: { interviewId: string; resumeId
             aria-label="Your answer"
             value={draft}
             rows={3}
-            placeholder="Type your answer…"
-            disabled={send.isPending}
+            placeholder={
+              recorder.state === "recording" ? "Listening…" : "Type your answer, or speak it…"
+            }
+            disabled={busy}
             onChange={(event) => setDraft(event.target.value)}
             onKeyDown={(event) => {
               // Enter sends; Shift+Enter is a new line, as in every chat app.
@@ -174,7 +202,7 @@ function Conversation({ interviewId, resumeId }: { interviewId: string; resumeId
             <Button
               variant="ghost"
               size="sm"
-              disabled={abandon.isPending}
+              disabled={abandon.isPending || recorder.state === "recording"}
               onClick={() => {
                 abandon.mutate(undefined, {
                   onError: (error) => toast.error(errorMessage(error)),
@@ -183,11 +211,44 @@ function Conversation({ interviewId, resumeId }: { interviewId: string; resumeId
             >
               Stop here
             </Button>
-            <Button onClick={() => void onSend()} disabled={send.isPending || !draft.trim()}>
-              {send.isPending ? <Spinner /> : <SendIcon aria-hidden="true" />}
-              Send
-            </Button>
+            <div className="flex items-center gap-2">
+              {recorder.state === "unsupported" ? null : (
+                <Button
+                  variant={recorder.state === "recording" ? "destructive" : "outline"}
+                  onClick={() => void onRecord()}
+                  disabled={busy || recorder.state === "stopping"}
+                  aria-label={
+                    recorder.state === "recording" ? "Stop recording" : "Answer by speaking"
+                  }
+                >
+                  {transcribeAnswer.isPending ? (
+                    <Spinner />
+                  ) : recorder.state === "recording" ? (
+                    <SquareIcon aria-hidden="true" />
+                  ) : (
+                    <MicIcon aria-hidden="true" />
+                  )}
+                  {transcribeAnswer.isPending
+                    ? "Listening back…"
+                    : recorder.state === "recording"
+                      ? formatSeconds(recorder.seconds)
+                      : "Speak"}
+                </Button>
+              )}
+              <Button
+                onClick={() => void onSend()}
+                disabled={busy || !draft.trim() || recorder.state === "recording"}
+              >
+                {send.isPending ? <Spinner /> : <SendIcon aria-hidden="true" />}
+                Send
+              </Button>
+            </div>
           </div>
+          {recorder.state === "recording" ? (
+            <p role="status" className="text-xs text-muted-foreground">
+              Recording. Press stop when you&apos;re done, and check what we heard before sending.
+            </p>
+          ) : null}
         </div>
       )}
     </div>
@@ -233,6 +294,11 @@ function Recorded({ turn }: { turn: Turn | undefined }) {
       ) : null}
     </div>
   );
+}
+
+function formatSeconds(total: number): string {
+  const minutes = Math.floor(total / 60);
+  return `${minutes}:${String(total % 60).padStart(2, "0")}`;
 }
 
 function InterviewSkeleton() {

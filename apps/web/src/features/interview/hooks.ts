@@ -5,7 +5,14 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { profileKeys } from "@/features/profile/hooks";
 import { getApiClient } from "@/lib/api/browser";
 
-import { abandonInterview, getInterview, listInterviews, sendAnswer, startInterview } from "./api";
+import {
+  abandonInterview,
+  getInterview,
+  listInterviews,
+  sendAnswer,
+  startInterview,
+  transcribe,
+} from "./api";
 
 export const interviewKeys = {
   all: ["interviews"] as const,
@@ -59,5 +66,11 @@ export function useAbandonInterview(interviewId: string) {
       void queryClient.invalidateQueries({ queryKey: interviewKeys.detail(interviewId) });
       void queryClient.invalidateQueries({ queryKey: interviewKeys.all });
     },
+  });
+}
+
+export function useTranscribe(interviewId: string) {
+  return useMutation({
+    mutationFn: (recording: Blob) => transcribe(getApiClient(), interviewId, recording),
   });
 }

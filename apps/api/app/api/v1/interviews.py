@@ -1,8 +1,8 @@
 import uuid
 
-from fastapi import APIRouter, status
+from fastapi import APIRouter, File, UploadFile, status
 
-from app.api.deps import CurrentUser, OptionalLLM, SessionDep
+from app.api.deps import CurrentUser, OptionalLLM, SessionDep, Speech
 from app.schemas.errors import AUTH_ERROR_RESPONSES, ErrorResponse
 from app.schemas.interview import (
     AnswerCreate,
@@ -10,9 +10,11 @@ from app.schemas.interview import (
     MessageRead,
     SessionRead,
     SessionWithTranscript,
+    TranscriptionRead,
     TurnRead,
 )
 from app.services.interview import InterviewService
+from app.services.speech import ALLOWED_AUDIO_TYPES, MAX_AUDIO_BYTES, Audio, AudioRejectedError
 
 router = APIRouter(prefix="/interviews", tags=["interviews"])
 
@@ -106,3 +108,49 @@ async def abandon_interview(
 ) -> SessionRead:
     """Stop an interview. Everything already recorded stays in the career record."""
     return SessionRead.model_validate(await InterviewService(session).abandon(user, interview_id))
+
+
+@router.post(
+    "/{interview_id}/transcriptions",
+    response_model=TranscriptionRead,
+    responses={
+        **AUTH_ERROR_RESPONSES,
+        **NOT_FOUND,
+        422: {"model": ErrorResponse, "description": "The recording could not be used"},
+        503: {"model": ErrorResponse, "description": "Voice is unavailable; typing still works"},
+    },
+)
+async def transcribe_answer(
+    user: CurrentUser,
+    session: SessionDep,
+    speech: Speech,
+    interview_id: uuid.UUID,
+    audio: UploadFile = File(description="A spoken answer, recorded in the browser"),
+) -> TranscriptionRead:
+    """Turn a recording into text for the person to check before they send it.
+
+    The recording is held in memory, transcribed, and dropped. It is never written to disk, to
+    the database or to a log, and this endpoint records nothing against the interview: only the
+    answer the person actually sends is kept (PRD section 27).
+    """
+    # Scoped to the owner first: an interview id that is not theirs never reaches a provider.
+    await InterviewService(session).get(user, interview_id)
+
+    content_type = (audio.content_type or "").split(";")[0].strip().lower()
+    if content_type not in ALLOWED_AUDIO_TYPES:
+        raise AudioRejectedError("That file type isn't supported. Record the answer again.")
+
+    content = await audio.read()
+    if not content:
+        raise AudioRejectedError("That recording was empty. Try again.")
+    if len(content) > MAX_AUDIO_BYTES:
+        raise AudioRejectedError("That recording is too long. Keep answers under a few minutes.")
+
+    transcription = await speech.transcribe(
+        Audio(
+            content=content,
+            filename=audio.filename or "answer.webm",
+            content_type=content_type,
+        )
+    )
+    return TranscriptionRead(text=transcription.text)

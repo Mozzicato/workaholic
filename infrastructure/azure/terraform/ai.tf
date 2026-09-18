@@ -25,9 +25,9 @@ resource "azurerm_cognitive_account" "ai" {
 }
 
 import {
-  for_each = var.ai_deployments
-  to       = azurerm_cognitive_deployment.model[each.key]
-  id       = "/subscriptions/${var.subscription_id}/resourceGroups/${var.resource_group_name}/providers/Microsoft.CognitiveServices/accounts/${var.ai_account_name}/deployments/${each.key}"
+  for_each = var.ai_adopted_deployments
+  to       = azurerm_cognitive_deployment.model[each.value]
+  id       = "/subscriptions/${var.subscription_id}/resourceGroups/${var.resource_group_name}/providers/Microsoft.CognitiveServices/accounts/${var.ai_account_name}/deployments/${each.value}"
 }
 
 resource "azurerm_cognitive_deployment" "model" {

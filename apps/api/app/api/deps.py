@@ -11,6 +11,8 @@ from app.services.ai.base import LLMProvider
 from app.services.ai.errors import AINotConfiguredError
 from app.services.auth.base import AuthProvider
 from app.services.resume.pdf import PdfRenderer
+from app.services.speech.base import SpeechToTextProvider
+from app.services.speech.errors import SpeechNotConfiguredError
 from app.services.users import UserService
 
 _bearer = HTTPBearer(auto_error=False, description="Supabase access token")
@@ -44,6 +46,14 @@ def get_pdf_renderer(request: Request) -> PdfRenderer:
     return renderer
 
 
+def get_speech(request: Request) -> SpeechToTextProvider:
+    """The configured speech provider. Voice endpoints fail clearly when it is off."""
+    provider: SpeechToTextProvider | None = request.app.state.speech
+    if provider is None:
+        raise SpeechNotConfiguredError()
+    return provider
+
+
 async def get_current_user(
     session: Annotated[AsyncSession, Depends(get_session)],
     auth_provider: Annotated[AuthProvider, Depends(get_auth_provider)],
@@ -64,3 +74,4 @@ CurrentUser = Annotated[User, Depends(get_current_user)]
 LLM = Annotated[LLMProvider, Depends(get_llm)]
 OptionalLLM = Annotated[LLMProvider | None, Depends(get_optional_llm)]
 Pdf = Annotated[PdfRenderer, Depends(get_pdf_renderer)]
+Speech = Annotated[SpeechToTextProvider, Depends(get_speech)]
