@@ -6,6 +6,7 @@ import { useProfile } from "@/features/profile/hooks";
 
 import { BasicsForm } from "./basics-form";
 import { ExperienceSection } from "./experience-section";
+import { ImportSection } from "./import-section";
 import { ProjectsSection } from "./projects-section";
 import { SkillsSection } from "./skills-section";
 
@@ -34,6 +35,7 @@ export function ProfileView() {
         </p>
       </header>
 
+      <ImportSection />
       <BasicsForm basics={profile.data.basics} />
       <ExperienceSection experience={profile.data.experience} />
       <ProjectsSection projects={profile.data.projects} />

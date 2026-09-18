@@ -146,3 +146,63 @@ export async function fetchPdf(
   const match = /filename="([^"]+)"/.exec(disposition);
   return { blob: await response.blob(), filename: match?.[1] ?? "resume.pdf" };
 }
+
+export const changeSummarySchema = z.object({
+  changed: z.array(z.string()),
+  unchanged: z.array(z.string()),
+  missing_requirements: z.array(z.string()),
+});
+
+export const tailoredSchema = z.object({
+  version: versionSchema,
+  summary: changeSummarySchema,
+});
+
+export const atsReportSchema = z.object({
+  score: z.number().int(),
+  maximum: z.number().int(),
+  categories: z.array(
+    z.object({
+      category: z.string(),
+      score: z.number().int(),
+      maximum: z.number().int(),
+      explanation: z.string(),
+    }),
+  ),
+  checks: z.array(
+    z.object({ category: z.string(), name: z.string(), passed: z.boolean(), detail: z.string() }),
+  ),
+  caveat: z.string(),
+});
+
+export type ChangeSummary = z.infer<typeof changeSummarySchema>;
+export type Tailored = z.infer<typeof tailoredSchema>;
+export type AtsReport = z.infer<typeof atsReportSchema>;
+
+/** A reordered copy of a version, led by what the job asks about. Nothing is reworded. */
+export function tailorVersion(
+  api: ApiClient,
+  resumeId: string,
+  versionId: string,
+  jobId: string,
+): Promise<Tailored> {
+  return api.request(`/api/v1/resumes/${resumeId}/versions/${versionId}/tailored`, {
+    method: "POST",
+    body: { job_id: jobId },
+    schema: tailoredSchema,
+  });
+}
+
+export function getAtsReport(
+  api: ApiClient,
+  resumeId: string,
+  versionId: string,
+  jobId: string | null,
+  signal?: AbortSignal,
+): Promise<AtsReport> {
+  const query = jobId ? `?job_id=${encodeURIComponent(jobId)}` : "";
+  return api.request(`/api/v1/resumes/${resumeId}/versions/${versionId}/ats${query}`, {
+    schema: atsReportSchema,
+    signal,
+  });
+}

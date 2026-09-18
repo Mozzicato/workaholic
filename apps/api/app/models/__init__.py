@@ -18,6 +18,7 @@ from app.models.interview import (
     InterviewSession,
     InterviewStatus,
 )
+from app.models.job import JobDescription
 from app.models.user import User
 
 __all__ = [
@@ -31,6 +32,7 @@ __all__ = [
     "InterviewRole",
     "InterviewSession",
     "InterviewStatus",
+    "JobDescription",
     "ProfileSection",
     "Resume",
     "ResumeStatus",

@@ -279,3 +279,55 @@ async def test_every_endpoint_requires_authentication(
 
     assert response.status_code == 401
     assert response.json()["error"]["code"] == "UNAUTHENTICATED"
+
+
+@pytest.mark.usefixtures("db_engine")
+class TestItemIdentityIsStable:
+    """Evidence points at profile items by id, so an id that changes breaks the whole chain."""
+
+    async def test_an_item_keeps_its_id_across_reads(
+        self, client: httpx.AsyncClient, idp: FakeIdentityProvider
+    ) -> None:
+        headers = bearer(idp.token(subject=str(uuid.uuid4()), email="ada@example.com"))
+        await client.get("/api/v1/me", headers=headers)
+        await client.patch(
+            PROFILE,
+            headers=headers,
+            json={"skills": [{"name": "Python"}], "experience": [experience_item()]},
+        )
+
+        first = (await client.get(PROFILE, headers=headers)).json()
+        second = (await client.get(PROFILE, headers=headers)).json()
+
+        assert first["skills"][0]["id"] == second["skills"][0]["id"]
+        assert first["experience"][0]["id"] == second["experience"][0]["id"]
+
+    async def test_an_id_the_user_supplies_is_kept(
+        self, client: httpx.AsyncClient, idp: FakeIdentityProvider
+    ) -> None:
+        headers = bearer(idp.token(subject=str(uuid.uuid4()), email="ada@example.com"))
+        await client.get("/api/v1/me", headers=headers)
+
+        await client.patch(
+            PROFILE, headers=headers, json={"skills": [{"id": "skill-1", "name": "Python"}]}
+        )
+        stored = (await client.get(PROFILE, headers=headers)).json()
+
+        assert stored["skills"][0]["id"] == "skill-1"
+
+    async def test_updating_one_section_leaves_another_section_s_ids_alone(
+        self, client: httpx.AsyncClient, idp: FakeIdentityProvider
+    ) -> None:
+        headers = bearer(idp.token(subject=str(uuid.uuid4()), email="ada@example.com"))
+        await client.get("/api/v1/me", headers=headers)
+        await client.patch(
+            PROFILE,
+            headers=headers,
+            json={"skills": [{"name": "Python"}], "experience": [experience_item()]},
+        )
+        before = (await client.get(PROFILE, headers=headers)).json()
+
+        await client.patch(PROFILE, headers=headers, json={"skills": [{"name": "Python"}]})
+        after = (await client.get(PROFILE, headers=headers)).json()
+
+        assert before["experience"][0]["id"] == after["experience"][0]["id"]

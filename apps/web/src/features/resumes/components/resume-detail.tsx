@@ -28,6 +28,7 @@ import { FormErrorAlert } from "@/features/auth/components/form-alert";
 import { useProfile } from "@/features/profile/hooks";
 import type { Resume } from "@/features/resumes/api";
 import { GeneratePanel } from "@/features/resumes/components/generate-panel";
+import { ResumeTools } from "@/features/resumes/components/resume-tools";
 import { VersionPanel } from "@/features/resumes/components/version-panel";
 import { useDeleteResume, useResume, useUpdateResume, useVersions } from "@/features/resumes/hooks";
 import { ApiError, errorMessage } from "@/lib/api/errors";
@@ -144,6 +145,14 @@ function Loaded({ resume }: { resume: Resume }) {
         selectedId={selectedVersionId}
         onSelect={setSelectedVersionId}
       />
+
+      {resume.document_type !== "cover_letter" && selectedVersionId ? (
+        <ResumeTools
+          resumeId={resume.id}
+          versionId={selectedVersionId}
+          onTailored={setSelectedVersionId}
+        />
+      ) : null}
 
       <DetailsForm resume={resume} />
 

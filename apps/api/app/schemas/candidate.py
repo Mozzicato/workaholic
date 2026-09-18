@@ -20,6 +20,7 @@ from app.models.candidate import (
     ResumeStatus,
     ResumeTemplate,
 )
+from app.schemas.job import ChangeSummary
 
 # "2024" or "2024-09". Day precision is noise on a resume.
 _MONTH_PATTERN = re.compile(r"^\d{4}(-(0[1-9]|1[0-2]))?$")
@@ -159,7 +160,15 @@ class CandidateProfileUpdate(CandidateModel):
     languages: list[LanguageItem] | None = Field(default=None, max_length=20)
 
     def sections(self) -> dict[str, object]:
-        return self.model_dump(exclude_unset=True, exclude_none=True, mode="json")
+        """The sections the request actually sent, each dumped in full.
+
+        `exclude_unset` applies all the way down, which would drop the id generated for a new
+        item — and an item whose id changes on every read cannot be referenced by evidence. So
+        the set of sections is decided by what was sent, and their contents are dumped complete.
+        """
+        sent = self.model_dump(exclude_unset=True, exclude_none=True, mode="json")
+        complete = self.model_dump(exclude_none=True, mode="json")
+        return {name: complete[name] for name in sent}
 
 
 # ── Evidence ─────────────────────────────────────────────────────────────────
@@ -259,3 +268,10 @@ class LetterBriefRequest(CandidateModel):
 class GenerateResumeRequest(CandidateModel):
     template: ResumeTemplate = ResumeTemplate.STANDARD
     brief: LetterBriefRequest | None = None
+
+
+class TailoredVersionRead(CandidateModel):
+    """A tailored version, and the account of what moved."""
+
+    version: ResumeVersionRead
+    summary: "ChangeSummary"

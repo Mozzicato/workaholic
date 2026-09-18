@@ -10,9 +10,11 @@ import {
   fetchPdf,
   fetchPreviewHtml,
   generateVersion,
+  getAtsReport,
   getResume,
   listResumes,
   listVersions,
+  tailorVersion,
   updateResume,
   type DocumentType,
   type LetterBrief,
@@ -120,5 +122,28 @@ export function useDownloadPdf(resumeId: string) {
         URL.revokeObjectURL(url);
       }
     },
+  });
+}
+
+export function useTailor(resumeId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ versionId, jobId }: { versionId: string; jobId: string }) =>
+      tailorVersion(getApiClient(), resumeId, versionId, jobId),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: versionKeys.all(resumeId) });
+      void queryClient.invalidateQueries({ queryKey: resumeKeys.detail(resumeId) });
+    },
+  });
+}
+
+/** Only fetched on request: it prints a PDF on the server to check its text reads back. */
+export function useAtsReport(resumeId: string, versionId: string | null, jobId: string | null) {
+  return useQuery({
+    queryKey: ["resumes", resumeId, "versions", versionId, "ats", jobId ?? "none"],
+    queryFn: ({ signal }) =>
+      getAtsReport(getApiClient(), resumeId, versionId as string, jobId, signal),
+    enabled: false,
+    staleTime: Infinity,
   });
 }

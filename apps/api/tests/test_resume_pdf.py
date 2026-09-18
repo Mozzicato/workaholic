@@ -81,6 +81,24 @@ class TestRendering:
         assert second.startswith(PDF_HEADER)
         assert abs(len(first) - len(second)) < 200  # only the embedded timestamp differs
 
+    async def test_text_survives_the_round_trip_into_a_pdf_and_back_out(
+        self, renderer: PdfRenderer
+    ) -> None:
+        """What an applicant tracking system does: read the text back out of the file."""
+        from app.services.documents import extract_text, pdf_text
+
+        content = await renderer.render(render_html(DOCUMENT, ResumeTemplate.STANDARD))
+
+        read_back = pdf_text(content)
+        assert "Ada Lovelace" in read_back
+        assert "payouts reconciliation" in read_back
+
+        # And the same file read as an upload, which is the other direction users use.
+        extracted = extract_text(content)
+        assert extracted.kind.value == "pdf"
+        assert extracted.pages == 1
+        assert "Lumen" in extracted.text or "Paystack" in extracted.text
+
     async def test_a_dead_browser_is_replaced_rather_than_failing_every_later_request(
         self, renderer: PdfRenderer
     ) -> None:

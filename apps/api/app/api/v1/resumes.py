@@ -14,16 +14,29 @@ from app.schemas.candidate import (
     ResumeUpdate,
     ResumeVersionRead,
     ResumeVersionSummary,
+    TailoredVersionRead,
 )
 from app.schemas.cover_letter import SCHEMA_VERSION as LETTER_SCHEMA_VERSION
 from app.schemas.cover_letter import CoverLetterDocument
 from app.schemas.errors import AUTH_ERROR_RESPONSES, ErrorResponse
+from app.schemas.job import (
+    AtsCategoryRead,
+    AtsCheckRead,
+    AtsReportRead,
+    ChangeSummary,
+    JobAnalysis,
+    TailorRequest,
+)
 from app.schemas.resume_document import ResumeDocument
 from app.services.candidate import CandidateProfileService, EvidenceService, ResumeService
 from app.services.cover_letter import CoverLetterService, LetterBrief
+from app.services.documents import pdf_text
+from app.services.job import JobService, build_report
 from app.services.resume import ResumeGenerationService
+from app.services.resume.ats import MAX_PER_CATEGORY, assess
 from app.services.resume.persistence import save_version
 from app.services.resume.rendering import render_html, render_letter_html
+from app.services.resume.tailoring import tailor
 
 router = APIRouter(prefix="/resumes", tags=["resumes"])
 
@@ -257,3 +270,122 @@ def _render(document_type: DocumentType, content: dict[str, Any], template: Resu
     if document_type is DocumentType.COVER_LETTER:
         return render_letter_html(CoverLetterDocument.model_validate(content))
     return render_html(ResumeDocument.model_validate(content), template)
+
+
+@router.post(
+    "/{resume_id}/versions/{version_id}/tailored",
+    response_model=TailoredVersionRead,
+    status_code=status.HTTP_201_CREATED,
+    responses={**AUTH_ERROR_RESPONSES, **NOT_FOUND},
+)
+async def tailor_version(
+    user: CurrentUser,
+    session: SessionDep,
+    resume_id: uuid.UUID,
+    version_id: uuid.UUID,
+    payload: TailorRequest,
+) -> TailoredVersionRead:
+    """Reorder an existing version to lead with what a job asks about.
+
+    Tailoring changes emphasis only: order of roles, projects, bullets and skills. It never
+    rewrites a line and never adds one, so it needs no model and cannot invent anything
+    (PRD §33).
+    """
+    service = ResumeService(session)
+    resume = await service.get(user, resume_id)
+    if resume.document_type is DocumentType.COVER_LETTER:
+        raise AppError(
+            ErrorCode.VALIDATION_ERROR, "Tailoring applies to resumes, not cover letters.", 422
+        )
+    version = await service.get_version(user, resume_id, version_id)
+    job = await JobService(session).get(user, payload.job_id)
+    profile = await CandidateProfileService(session).get_or_create(user)
+
+    analysis = JobAnalysis.model_validate(job.analysis or {})
+    report = build_report(job.id, analysis, profile)
+    result = tailor(ResumeDocument.model_validate(version.content), analysis, report.matches)
+
+    tailored = await save_version(
+        session,
+        user=user,
+        resume=resume,
+        content=result.document.model_dump(mode="json"),
+        schema_version=version.schema_version,
+        prompt_version=version.prompt_version,
+        model=version.model or "",
+        template=version.template,
+    )
+    return TailoredVersionRead(
+        version=ResumeVersionRead.model_validate(tailored),
+        summary=ChangeSummary(
+            changed=result.changed or ["Nothing needed moving: it already leads with this job."],
+            unchanged=result.unchanged,
+            missing_requirements=result.missing_requirements,
+        ),
+    )
+
+
+@router.get(
+    "/{resume_id}/versions/{version_id}/ats",
+    response_model=AtsReportRead,
+    responses={**AUTH_ERROR_RESPONSES, **NOT_FOUND},
+)
+async def ats_report(
+    user: CurrentUser,
+    session: SessionDep,
+    pdf: Pdf,
+    resume_id: uuid.UUID,
+    version_id: uuid.UUID,
+    job_id: uuid.UUID | None = None,
+) -> AtsReportRead:
+    """Check this version against deterministic ATS criteria (PRD §34, §35).
+
+    The PDF is printed and its text read back out, because the only way to know a PDF contains
+    text rather than a picture of text is to try to read it.
+    """
+    service = ResumeService(session)
+    resume = await service.get(user, resume_id)
+    if resume.document_type is DocumentType.COVER_LETTER:
+        raise AppError(
+            ErrorCode.VALIDATION_ERROR, "ATS checks apply to resumes, not cover letters.", 422
+        )
+    version = await service.get_version(user, resume_id, version_id)
+    document = ResumeDocument.model_validate(version.content)
+    html = render_html(document, version.template)
+
+    analysis = None
+    if job_id is not None:
+        job = await JobService(session).get(user, job_id)
+        analysis = JobAnalysis.model_validate(job.analysis or {})
+
+    try:
+        printed = await pdf.render(html)
+        extracted: str | None = pdf_text(printed)
+    except AppError:
+        # The score should still be useful when the browser is unavailable.
+        extracted = None
+
+    report = assess(document, html=html, pdf_text=extracted, analysis=analysis)
+    return AtsReportRead(
+        score=report.score,
+        maximum=MAX_PER_CATEGORY * len(report.categories),
+        categories=[
+            AtsCategoryRead(
+                category=category.category.value,
+                score=category.score,
+                maximum=category.maximum,
+                explanation=category.explanation,
+            )
+            for category in report.categories
+        ],
+        checks=[
+            AtsCheckRead(
+                category=check.category.value,
+                name=check.name,
+                passed=check.passed,
+                detail=check.detail,
+            )
+            for check in report.checks
+        ],
+        caveat=report.caveat,
+    )
