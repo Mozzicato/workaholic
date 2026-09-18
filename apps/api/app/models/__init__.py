@@ -12,6 +12,12 @@ from app.models.candidate import (
     ResumeTemplate,
     ResumeVersion,
 )
+from app.models.interview import (
+    InterviewMessage,
+    InterviewRole,
+    InterviewSession,
+    InterviewStatus,
+)
 from app.models.user import User
 
 __all__ = [
@@ -21,6 +27,10 @@ __all__ = [
     "Evidence",
     "EvidenceSource",
     "EvidenceStatus",
+    "InterviewMessage",
+    "InterviewRole",
+    "InterviewSession",
+    "InterviewStatus",
     "ProfileSection",
     "Resume",
     "ResumeStatus",

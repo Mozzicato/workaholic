@@ -26,12 +26,17 @@ def get_auth_provider(request: Request) -> AuthProvider:
     return provider
 
 
-def get_llm(request: Request) -> LLMProvider:
-    """The configured AI provider. Endpoints that need AI fail clearly when it's disabled."""
+def get_optional_llm(request: Request) -> LLMProvider | None:
+    """The configured AI provider, or None. For work that degrades rather than fails."""
     provider: LLMProvider | None = request.app.state.llm
-    if provider is None:
-        raise AINotConfiguredError()
     return provider
+
+
+def get_llm(llm: Annotated[LLMProvider | None, Depends(get_optional_llm)]) -> LLMProvider:
+    """The configured AI provider. Endpoints that need AI fail clearly when it's disabled."""
+    if llm is None:
+        raise AINotConfiguredError()
+    return llm
 
 
 def get_pdf_renderer(request: Request) -> PdfRenderer:
@@ -57,4 +62,5 @@ async def get_current_user(
 SessionDep = Annotated[AsyncSession, Depends(get_session)]
 CurrentUser = Annotated[User, Depends(get_current_user)]
 LLM = Annotated[LLMProvider, Depends(get_llm)]
+OptionalLLM = Annotated[LLMProvider | None, Depends(get_optional_llm)]
 Pdf = Annotated[PdfRenderer, Depends(get_pdf_renderer)]

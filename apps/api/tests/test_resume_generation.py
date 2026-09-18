@@ -16,7 +16,7 @@ from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.deps import get_llm
+from app.api.deps import get_llm, get_optional_llm
 from app.models.candidate import ProfileSection
 from app.models.user import User
 from app.prompts.resume import GENERATE_PROMPT_VERSION
@@ -115,6 +115,7 @@ INVENTED: dict[str, Any] = {
 def app_with(llm: ScriptedLLM, make_app: AppFactory) -> FastAPI:
     app = make_app()
     app.dependency_overrides[get_llm] = lambda: llm
+    app.dependency_overrides[get_optional_llm] = lambda: llm
     return app
 
 
