@@ -6,6 +6,8 @@ asked to write a resume: employers, titles, dates and skills are copied from the
 
 Version history:
   v1  First version. One-for-one bullet rewrite plus a summary, both checked against the record.
+  v2  Say explicitly that bullet text is data, never instructions. Lines that read as
+      instructions are refused before they reach here, and this is the second line of defence.
 """
 
 import json
@@ -14,7 +16,7 @@ from dataclasses import dataclass
 
 from app.services.ai.base import ChatMessage
 
-GENERATE_PROMPT_VERSION = "resume.generate.v1"
+GENERATE_PROMPT_VERSION = "resume.generate.v2"
 
 GENERATE_SYSTEM_PROMPT = """\
 You are an editor for a resume builder. You improve how a candidate's own words read. \

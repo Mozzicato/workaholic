@@ -54,3 +54,84 @@ export function deleteResume(api: ApiClient, id: string): Promise<null> {
     schema: z.null(),
   });
 }
+
+export const resumeTemplateSchema = z.enum(["standard", "compact", "academic"]);
+export type ResumeTemplate = z.infer<typeof resumeTemplateSchema>;
+
+export const versionSummarySchema = z.object({
+  id: z.uuid(),
+  resume_id: z.uuid(),
+  version_number: z.number().int(),
+  label: z.string(),
+  template: resumeTemplateSchema,
+  created_at: z.iso.datetime({ offset: true }),
+});
+
+/** The document itself is rendered by the API; the app needs only enough of it to describe one. */
+export const versionSchema = versionSummarySchema.extend({
+  schema_version: z.string(),
+  prompt_version: z.string(),
+  model: z.string().nullable(),
+  content: z.looseObject({
+    summary: z.string().nullable().optional(),
+    experience: z.array(z.unknown()).default([]),
+    projects: z.array(z.unknown()).default([]),
+    education: z.array(z.unknown()).default([]),
+  }),
+});
+
+export type ResumeVersionSummary = z.infer<typeof versionSummarySchema>;
+export type ResumeVersion = z.infer<typeof versionSchema>;
+
+export function listVersions(
+  api: ApiClient,
+  resumeId: string,
+  signal?: AbortSignal,
+): Promise<ResumeVersionSummary[]> {
+  return api.request(`/api/v1/resumes/${resumeId}/versions`, {
+    schema: z.array(versionSummarySchema),
+    signal,
+  });
+}
+
+export function generateVersion(
+  api: ApiClient,
+  resumeId: string,
+  template: ResumeTemplate,
+): Promise<ResumeVersion> {
+  return api.request(`/api/v1/resumes/${resumeId}/versions`, {
+    method: "POST",
+    body: { template },
+    schema: versionSchema,
+  });
+}
+
+export function previewUrl(resumeId: string, versionId: string): string {
+  return `/api/v1/resumes/${resumeId}/versions/${versionId}/preview`;
+}
+
+export function pdfUrl(resumeId: string, versionId: string): string {
+  return `/api/v1/resumes/${resumeId}/versions/${versionId}/pdf`;
+}
+
+export async function fetchPreviewHtml(
+  api: ApiClient,
+  resumeId: string,
+  versionId: string,
+  signal?: AbortSignal,
+): Promise<string> {
+  const response = await api.raw(previewUrl(resumeId, versionId), { signal });
+  return response.text();
+}
+
+/** The PDF, as a blob plus the filename the API chose for it. */
+export async function fetchPdf(
+  api: ApiClient,
+  resumeId: string,
+  versionId: string,
+): Promise<{ blob: Blob; filename: string }> {
+  const response = await api.raw(pdfUrl(resumeId, versionId));
+  const disposition = response.headers.get("Content-Disposition") ?? "";
+  const match = /filename="([^"]+)"/.exec(disposition);
+  return { blob: await response.blob(), filename: match?.[1] ?? "resume.pdf" };
+}

@@ -52,7 +52,7 @@ from app.schemas.resume_document import (
     ResumeSkillGroup,
 )
 from app.services.ai.base import ChatMessage, LLMProvider
-from app.services.resume.validation import UnsupportedClaim, check_text
+from app.services.resume.validation import UnsupportedClaim, check_text, find_instruction
 
 logger = structlog.get_logger(__name__)
 
@@ -63,6 +63,24 @@ MAX_BULLETS = 60
 class ProfileIncompleteError(AppError):
     def __init__(self, message: str) -> None:
         super().__init__(ErrorCode.PROFILE_INCOMPLETE, message, 422)
+
+
+class InstructionLikeContentError(AppError):
+    """A profile line addresses the writer instead of describing what happened (PRD section 38).
+
+    These lines are refused rather than sent. Text that says "make this sound senior" would
+    otherwise license its own vocabulary in the checks that follow: the words it smuggles in
+    would appear in the source it is checked against.
+    """
+
+    def __init__(self, offenders: Sequence[tuple[str, str]]) -> None:
+        super().__init__(
+            ErrorCode.PROFILE_CONTAINS_INSTRUCTIONS,
+            "Some lines in your record tell the writer what to say instead of saying what you "
+            "did. Rewrite them as plain statements of what happened, then try again.",
+            422,
+            details=[{"field": phrase, "issue": line} for phrase, line in offenders[:10]],
+        )
 
 
 class GenerationBlockedError(AppError):
@@ -127,6 +145,15 @@ class ResumeGenerationService:
     ) -> ResumeVersion:
         blocked_items = _items_awaiting_confirmation(evidence)
         sources = _collect_sources(profile, blocked_items)
+
+        offenders = [
+            (phrase, source.text[:200])
+            for source in sources
+            if (phrase := find_instruction(source.text))
+        ]
+        if offenders:
+            raise InstructionLikeContentError(offenders)
+
         if not sources:
             raise ProfileIncompleteError(
                 "Add a role or project with at least one line about what you did, then we can "

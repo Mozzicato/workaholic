@@ -27,7 +27,9 @@ import { Spinner } from "@/components/ui/spinner";
 import { FormErrorAlert } from "@/features/auth/components/form-alert";
 import { useProfile } from "@/features/profile/hooks";
 import type { Resume } from "@/features/resumes/api";
-import { useDeleteResume, useResume, useUpdateResume } from "@/features/resumes/hooks";
+import { GeneratePanel } from "@/features/resumes/components/generate-panel";
+import { VersionPanel } from "@/features/resumes/components/version-panel";
+import { useDeleteResume, useResume, useUpdateResume, useVersions } from "@/features/resumes/hooks";
 import { ApiError, errorMessage } from "@/lib/api/errors";
 import { routes } from "@/lib/routes";
 
@@ -75,6 +77,8 @@ export function ResumeDetail({ id }: { id: string }) {
 function Loaded({ resume }: { resume: Resume }) {
   const status = STATUS_COPY[resume.status];
   const profile = useProfile();
+  const versions = useVersions(resume.id);
+  const [selectedVersionId, setSelectedVersionId] = useState<string | null>(null);
   const recordItems = profile.data
     ? profile.data.experience.length + profile.data.projects.length + profile.data.skills.length
     : 0;
@@ -123,6 +127,18 @@ function Loaded({ resume }: { resume: Resume }) {
           {recordItems > 0 ? "Review your career record" : "Add your experience"}
         </Link>
       </section>
+
+      <GeneratePanel
+        resumeId={resume.id}
+        hasVersions={(versions.data?.length ?? 0) > 0}
+        onGenerated={setSelectedVersionId}
+      />
+
+      <VersionPanel
+        resumeId={resume.id}
+        selectedId={selectedVersionId}
+        onSelect={setSelectedVersionId}
+      />
 
       <DetailsForm resume={resume} />
 

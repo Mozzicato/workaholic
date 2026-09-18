@@ -25,6 +25,8 @@ export type ApiClient = {
     path: string,
     options: RequestOptions<TSchema>,
   ): Promise<z.infer<TSchema>>;
+  /** An authenticated response, unparsed: for documents the API returns as HTML or PDF. */
+  raw(path: string, options?: { signal?: AbortSignal }): Promise<Response>;
 };
 
 /**
@@ -36,7 +38,13 @@ export function createApiClient(config: ApiClientConfig): ApiClient {
   const fetchImpl = config.fetch ?? fetch;
   const baseUrl = config.baseUrl.replace(/\/+$/, "");
 
-  async function send(path: string, token: string, method: HttpMethod, body: unknown, signal?: AbortSignal) {
+  async function send(
+    path: string,
+    token: string,
+    method: HttpMethod,
+    body: unknown,
+    signal?: AbortSignal,
+  ) {
     const headers: Record<string, string> = { Authorization: `Bearer ${token}` };
     if (body !== undefined) headers["Content-Type"] = "application/json";
     try {
@@ -53,29 +61,45 @@ export function createApiClient(config: ApiClientConfig): ApiClient {
     }
   }
 
+  /** Sends the request with a valid token, refreshing once if the first attempt is rejected. */
+  async function authenticated(
+    path: string,
+    method: HttpMethod,
+    body: unknown,
+    signal?: AbortSignal,
+  ): Promise<Response> {
+    const token = await config.getAccessToken();
+    if (!token) {
+      throw new ApiError({
+        status: 401,
+        code: "UNAUTHENTICATED",
+        message: "Please sign in to continue.",
+      });
+    }
+
+    const response = await send(path, token, method, body, signal);
+    if (response.status !== 401) return response;
+
+    // Access tokens are short-lived; one refresh-and-retry covers normal expiry.
+    const refreshed = await config.refreshAccessToken();
+    return refreshed ? await send(path, refreshed, method, body, signal) : response;
+  }
+
   return {
+    async raw(path, options = {}) {
+      const response = await authenticated(path, "GET", undefined, options.signal);
+      if (!response.ok) throw await apiErrorFromResponse(response);
+      return response;
+    },
+
     async request(path, { method = "GET", body, schema, signal }) {
-      const token = await config.getAccessToken();
-      if (!token) {
-        throw new ApiError({
-          status: 401,
-          code: "UNAUTHENTICATED",
-          message: "Please sign in to continue.",
-        });
-      }
-
-      let response = await send(path, token, method, body, signal);
-
-      if (response.status === 401) {
-        // Access tokens are short-lived; one refresh-and-retry covers normal expiry.
-        const refreshed = await config.refreshAccessToken();
-        if (refreshed) response = await send(path, refreshed, method, body, signal);
-      }
+      const response = await authenticated(path, method, body, signal);
 
       if (!response.ok) throw await apiErrorFromResponse(response);
 
       const requestId = response.headers.get("X-Request-ID");
-      const payload: unknown = response.status === 204 ? null : await response.json().catch(() => undefined);
+      const payload: unknown =
+        response.status === 204 ? null : await response.json().catch(() => undefined);
       const parsed = schema.safeParse(payload);
       if (!parsed.success) throw invalidResponseError(requestId);
       return parsed.data;

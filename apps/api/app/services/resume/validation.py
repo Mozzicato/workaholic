@@ -22,7 +22,7 @@ import re
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 
-__all__ = ["UnsupportedClaim", "check_text", "vocabulary_of"]
+__all__ = ["UnsupportedClaim", "check_text", "find_instruction", "vocabulary_of"]
 
 # Tokens: words (with internal apostrophes, hyphens, dots and pluses, so "CI/CD", "C++",
 # "Node.js" and "well-tested" survive) and numbers.
@@ -151,6 +151,34 @@ _CLAIM_STEMS = {
     "user": "user",
     "users": "user",
 }
+
+
+# Text that addresses the writer instead of describing what happened (PRD section 38). These
+# patterns are deliberately specific: "ignore" or "say" alone appear in honest sentences, so a
+# match needs the shape of an instruction. A line like this cannot be checked, because the words
+# it smuggles in would license themselves as its own source.
+_INSTRUCTION_PATTERNS = (
+    re.compile(r"\bignore\s+(all\s+)?(the\s+)?(previous|prior|above|earlier)\b", re.I),
+    re.compile(r"\bdisregard\s+(all\s+)?(the\s+)?(previous|prior|above|earlier)\b", re.I),
+    re.compile(r"\byou\s+are\s+now\b", re.I),
+    re.compile(r"\bact\s+as\s+(a|an|if)\b", re.I),
+    re.compile(r"\bsystem\s*(prompt|note|message)\s*:", re.I),
+    re.compile(r"\bmake\s+(it|this|me|that)\s+sound\b", re.I),
+    re.compile(r"\bfeel\s+free\s+to\s+(add|say|mention|include|claim)\b", re.I),
+    re.compile(r"\b(pretend|claim)\s+(that\s+)?i\b", re.I),
+    re.compile(r"\bsay\s+(that\s+)?i\s+(led|owned|managed|built|founded|increased)\b", re.I),
+    re.compile(r"\b(add|include)\s+(that\s+)?i\s+(led|owned|managed|founded)\b", re.I),
+    re.compile(r"\bexaggerat", re.I),
+)
+
+
+def find_instruction(text: str) -> str | None:
+    """The instruction-shaped phrase in this text, if there is one."""
+    for pattern in _INSTRUCTION_PATTERNS:
+        match = pattern.search(text)
+        if match:
+            return match.group(0)
+    return None
 
 
 @dataclass(frozen=True, slots=True)

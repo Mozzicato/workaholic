@@ -90,8 +90,8 @@ export function CreateResumeDialog({ variant = "default" }: { variant?: "default
         <DialogHeader>
           <DialogTitle className="font-heading text-2xl">Start a resume</DialogTitle>
           <DialogDescription>
-            Name it for yourself, and say which role it&apos;s for. Workaholic builds the content from
-            what you tell it — nothing is invented.
+            Name it for yourself, and say which role it&apos;s for. Workaholic builds the content
+            from what you tell it — nothing is invented.
           </DialogDescription>
         </DialogHeader>
 
