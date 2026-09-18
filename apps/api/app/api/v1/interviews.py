@@ -99,6 +99,25 @@ async def answer_question(
 
 
 @router.post(
+    "/{interview_id}/continue",
+    response_model=TurnRead,
+    responses={**AUTH_ERROR_RESPONSES, **NOT_FOUND, **CLOSED},
+)
+async def continue_interview(
+    user: CurrentUser, session: SessionDep, llm: OptionalLLM, interview_id: uuid.UUID
+) -> TurnRead:
+    """Ask the next question after a document was imported partway through the conversation."""
+    turn = await InterviewService(session, llm).continue_after_upload(user, interview_id)
+    return TurnRead(
+        session=SessionRead.model_validate(turn.session),
+        reply=MessageRead.model_validate(turn.reply),
+        recorded=turn.recorded,
+        dropped=turn.dropped,
+        completed=turn.completed,
+    )
+
+
+@router.post(
     "/{interview_id}/abandon",
     response_model=SessionRead,
     responses={**AUTH_ERROR_RESPONSES, **NOT_FOUND},

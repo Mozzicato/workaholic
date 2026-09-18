@@ -48,6 +48,12 @@ from app.schemas.resume_document import (
 )
 from app.services.ai.base import ChatMessage, LLMProvider
 from app.services.resume.persistence import save_version
+from app.services.resume.readiness import (
+    DocumentKind,
+    Readiness,
+    ReadinessItem,
+    assess_readiness,
+)
 from app.services.resume.record import (
     SourceBullet,
     collect_sources,
@@ -65,8 +71,21 @@ logger = structlog.get_logger(__name__)
 
 
 class ProfileIncompleteError(AppError):
-    def __init__(self, message: str) -> None:
-        super().__init__(ErrorCode.PROFILE_INCOMPLETE, message, 422)
+    def __init__(self, message: str, missing: Sequence[ReadinessItem] = ()) -> None:
+        super().__init__(
+            ErrorCode.PROFILE_INCOMPLETE,
+            message,
+            422,
+            details=[{"field": item.key, "issue": item.hint} for item in missing],
+        )
+
+    @classmethod
+    def from_readiness(cls, readiness: Readiness, document: str) -> "ProfileIncompleteError":
+        labels = ", ".join(item.label.lower() for item in readiness.missing)
+        return cls(
+            f"Your record isn't ready for a {document} yet. Still needed: {labels}.",
+            readiness.missing,
+        )
 
 
 class InstructionLikeContentError(AppError):
@@ -132,6 +151,10 @@ class ResumeGenerationService:
         evidence: Sequence[Evidence],
         template: ResumeTemplate = ResumeTemplate.STANDARD,
     ) -> ResumeVersion:
+        readiness = assess_readiness(profile, DocumentKind.RESUME)
+        if not readiness.ready:
+            raise ProfileIncompleteError.from_readiness(readiness, "resume")
+
         blocked_items = items_awaiting_confirmation(evidence)
         sources = collect_sources(profile, blocked_items)
 
@@ -384,6 +407,7 @@ def _education(profile: CandidateProfile, blocked_items: frozenset[str]) -> list
                 institution=institution,
                 qualification=text_of(item.get("qualification")),
                 field_of_study=text_of(item.get("field_of_study")),
+                grade=text_of(item.get("grade")),
                 location=text_of(item.get("location")),
                 start_date=text_of(item.get("start_date")),
                 end_date=text_of(item.get("end_date")),

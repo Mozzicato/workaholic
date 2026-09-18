@@ -4,9 +4,11 @@ Choosing the subject of the next question is a decision about the user's data, s
 not the model. The model is given one gap and asked to phrase a question about it. That keeps the
 interview predictable, keeps it testable without a model, and stops it drifting into small talk.
 
-The order of `Topic` is the priority order in PRD §24: experience before projects, what you did
-before what you used, outcomes before education. A gap for an item the user has already been
-asked about is skipped, so the interview moves on instead of nagging.
+The order of `Topic` is the order a person would be walked through building a resume: who you
+are and how to reach you, where you studied, then what you have done — experience before
+projects, what you did before what you used. Within the work, it keeps the priority order in PRD
+§24. A gap for an item the user has already been asked about is skipped, so the interview moves
+on instead of nagging.
 """
 
 import re
@@ -28,16 +30,19 @@ _OUTCOME_SIGNALS = re.compile(
 class Topic(IntEnum):
     """Subjects an interview can cover, most valuable first."""
 
-    EXPERIENCE = 1  # no roles recorded at all
-    EXPERIENCE_DETAIL = 2  # a role with nothing said about it
-    EXPERIENCE_OUTCOME = 3  # a role described only as duties, with no result
-    TECHNOLOGIES = 4  # a role or project with no tools named
-    PROJECTS = 5  # nothing built outside a job
-    PROJECT_DETAIL = 6
-    PROJECT_OUTCOME = 7
-    SKILLS = 8
-    EDUCATION = 9
-    CERTIFICATIONS = 10
+    NAME = 1  # no name to put at the top of the page
+    CONTACT = 2  # no email address or phone number
+    EDUCATION = 3  # no school or course recorded
+    GRADE = 4  # a school with no grade — optional, and the question says so
+    EXPERIENCE = 5  # no roles recorded at all
+    EXPERIENCE_DETAIL = 6  # a role with nothing said about it
+    EXPERIENCE_OUTCOME = 7  # a role described only as duties, with no result
+    TECHNOLOGIES = 8  # a role or project with no tools named
+    PROJECTS = 9  # nothing built outside a job
+    PROJECT_DETAIL = 10
+    PROJECT_OUTCOME = 11
+    SKILLS = 12
+    CERTIFICATIONS = 13
 
 
 @dataclass(frozen=True, slots=True)
@@ -62,8 +67,48 @@ def open_gaps(profile: Any, asked: Sequence[str] = ()) -> list[Gap]:
     skills = _items(getattr(profile, "skills", None))
     education = _items(getattr(profile, "education", None))
     certifications = _items(getattr(profile, "certifications", None))
+    basics = getattr(profile, "basics", None)
+    basics = basics if isinstance(basics, dict) else {}
 
     gaps: list[Gap] = []
+
+    if not _text(basics.get("full_name")):
+        gaps.append(
+            Gap(
+                topic=Topic.NAME,
+                item_id=None,
+                subject="their name",
+                missing="no name is recorded for the top of the resume",
+            )
+        )
+    if not _text(basics.get("email")) and not _text(basics.get("phone")):
+        gaps.append(
+            Gap(
+                topic=Topic.CONTACT,
+                item_id=None,
+                subject="how to contact them",
+                missing="no email address or phone number is recorded",
+            )
+        )
+    if not education:
+        gaps.append(
+            Gap(
+                topic=Topic.EDUCATION,
+                item_id=None,
+                subject="their education",
+                missing="no school, degree or course is recorded",
+            )
+        )
+    for index, school in enumerate(education):
+        if not _text(school.get("grade")):
+            gaps.append(
+                Gap(
+                    topic=Topic.GRADE,
+                    item_id=_identifier(school, index),
+                    subject=_text(school.get("institution")) or "their course",
+                    missing="no grade or CGPA is recorded, and it is optional",
+                )
+            )
 
     if not experience:
         gaps.append(
@@ -161,15 +206,6 @@ def open_gaps(profile: Any, asked: Sequence[str] = ()) -> list[Gap]:
                 item_id=None,
                 subject="their skills",
                 missing="no skills are recorded",
-            )
-        )
-    if not education:
-        gaps.append(
-            Gap(
-                topic=Topic.EDUCATION,
-                item_id=None,
-                subject="their education",
-                missing="no school, degree or course is recorded",
             )
         )
     if not certifications and education:

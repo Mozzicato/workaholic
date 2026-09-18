@@ -13,15 +13,33 @@ import pytest
 
 from app.services.interview.agent import MAX_QUESTIONS
 from tests.conftest import AppFactory, FakeIdentityProvider, bearer, running
-from tests.test_resume_generation import ScriptedLLM, app_with, sign_in
+from tests.test_resume_generation import ScriptedLLM, app_with
+from tests.test_resume_generation import sign_in as bare_sign_in
 
 INTERVIEWS = "/api/v1/interviews"
+
+# Who they are and where they studied: with these recorded, an interview starts on their work.
+ABOUT_THEM: dict[str, Any] = {
+    "basics": {"full_name": "Ada Lovelace", "email": "ada@lovelace.dev"},
+    "education": [{"institution": "University of Lagos", "qualification": "BSc", "grade": "4.5/5"}],
+}
+
+
+async def sign_in(client: httpx.AsyncClient, idp: FakeIdentityProvider) -> dict[str, str]:
+    """A user whose basics are already recorded, so the interview turns to their work."""
+    headers = await bare_sign_in(client, idp)
+    await client.patch("/api/v1/profile", headers=headers, json=ABOUT_THEM)
+    return headers
 
 
 def facts(**fields: Any) -> dict[str, Any]:
     """An extraction answer for the scripted model."""
     return {
         "usable": True,
+        "full_name": "",
+        "email": "",
+        "phone": "",
+        "location": "",
         "employer": "",
         "title": "",
         "start_date": "",
@@ -36,6 +54,7 @@ def facts(**fields: Any) -> dict[str, Any]:
         "institution": "",
         "qualification": "",
         "field_of_study": "",
+        "grade": "",
         "certification_name": "",
         **fields,
     }
@@ -84,7 +103,7 @@ class TestStarting:
     async def test_it_opens_by_asking_about_work_history(
         self, make_app: AppFactory, idp: FakeIdentityProvider
     ) -> None:
-        llm = Scripted(questions=["Where have you worked most recently?"])
+        llm = Scripted()
         async with running(app_with(llm, make_app)) as client:
             headers = await sign_in(client, idp)
 
@@ -94,7 +113,9 @@ class TestStarting:
         assert started["session"]["questions_asked"] == 1
         assert len(started["messages"]) == 1
         assert started["messages"][0]["role"] == "agent"
-        assert started["messages"][0]["content"] == "Where have you worked most recently?"
+        # "No" must be a fine answer, so the question is fixed rather than phrased by a model.
+        assert "If not, just say no" in started["messages"][0]["content"]
+        assert llm.asked == []
 
     async def test_it_runs_without_a_model_at_all(
         self, make_app: AppFactory, idp: FakeIdentityProvider
@@ -120,6 +141,12 @@ class TestStarting:
         llm = Scripted()
         async with running(app_with(llm, make_app)) as client:
             headers = await sign_in(client, idp)
+            # A role with nothing said about it: the follow-up is phrased by the model.
+            await client.patch(
+                "/api/v1/profile",
+                headers=headers,
+                json={"experience": [{"employer": "Lumen Freight", "title": "Intern"}]},
+            )
 
             started = await start(client, headers, target_role="Junior Backend Engineer")
 
@@ -405,3 +432,188 @@ class TestOwnership:
             response = await client.post(INTERVIEWS, json={})
 
         assert response.status_code == 401
+
+
+SCHOOL_NO_GRADE: dict[str, Any] = {
+    "basics": {"full_name": "Ada Lovelace", "phone": "08012345678"},
+    "education": [{"institution": "University of Lagos"}],
+}
+
+
+@pytest.mark.usefixtures("db_engine")
+class TestWalkingThrough:
+    """With nothing recorded, the interview walks through a resume from the top."""
+
+    async def test_it_greets_them_and_asks_their_name_first(
+        self, make_app: AppFactory, idp: FakeIdentityProvider
+    ) -> None:
+        llm = Scripted()
+        async with running(app_with(llm, make_app)) as client:
+            headers = await bare_sign_in(client, idp)
+            started = await start(client, headers)
+
+        opening = started["messages"][0]["content"]
+        assert opening.startswith("Hi!")
+        assert "upload" in opening
+        assert opening.endswith("What's your full name, as it should appear on your resume?")
+        # A name question has nothing for a model to phrase.
+        assert llm.asked == []
+
+    async def test_their_name_and_contact_go_into_the_record(
+        self, make_app: AppFactory, idp: FakeIdentityProvider
+    ) -> None:
+        llm = Scripted(
+            facts(full_name="Ada Lovelace"),
+            facts(email="ada@lovelace.dev", location="Lagos"),
+        )
+        async with running(app_with(llm, make_app)) as client:
+            headers = await bare_sign_in(client, idp)
+            interview_id = (await start(client, headers))["session"]["id"]
+
+            first = await answer(client, headers, interview_id, "It's Ada Lovelace")
+            second = await answer(
+                client, headers, interview_id, "ada at lovelace dot dev, and I live in Lagos"
+            )
+            basics = (await client.get("/api/v1/profile", headers=headers)).json()["basics"]
+            evidence = (await client.get("/api/v1/evidence", headers=headers)).json()
+
+        assert first.json()["recorded"] == ["name: Ada Lovelace"]
+        assert "email address or phone number" in first.json()["reply"]["content"]
+        assert second.json()["recorded"] == ["email: ada@lovelace.dev", "location: Lagos"]
+        assert "Where are you studying" in second.json()["reply"]["content"]
+        assert basics["full_name"] == "Ada Lovelace"
+        assert basics["email"] == "ada@lovelace.dev"
+        assert {item["section"] for item in evidence} == {"basics"}
+
+    async def test_a_name_they_typed_themselves_is_never_replaced(
+        self, make_app: AppFactory, idp: FakeIdentityProvider
+    ) -> None:
+        llm = Scripted(facts(full_name="Ada King", employer="Lumen Freight", title="Intern"))
+        async with running(app_with(llm, make_app)) as client:
+            headers = await sign_in(client, idp)
+            interview_id = (await start(client, headers))["session"]["id"]
+
+            await answer(
+                client, headers, interview_id, "Ada King here, I was an intern at Lumen Freight"
+            )
+            basics = (await client.get("/api/v1/profile", headers=headers)).json()["basics"]
+
+        assert basics["full_name"] == "Ada Lovelace"
+
+    async def test_a_grade_is_optional(
+        self, make_app: AppFactory, idp: FakeIdentityProvider
+    ) -> None:
+        llm = Scripted(facts(usable=False))
+        async with running(app_with(llm, make_app)) as client:
+            headers = await bare_sign_in(client, idp)
+            await client.patch("/api/v1/profile", headers=headers, json=SCHOOL_NO_GRADE)
+            started = await start(client, headers)
+            skipped = await answer(client, headers, started["session"]["id"], "skip")
+
+        assert "CGPA do you have from University of Lagos" in started["messages"][0]["content"]
+        assert "skip" in started["messages"][0]["content"]
+        assert skipped.json()["recorded"] == []
+        assert "job, internship or placement" in skipped.json()["reply"]["content"]
+
+    async def test_a_grade_they_give_lands_on_their_school(
+        self, make_app: AppFactory, idp: FakeIdentityProvider
+    ) -> None:
+        llm = Scripted(facts(grade="4.52/5"))
+        async with running(app_with(llm, make_app)) as client:
+            headers = await bare_sign_in(client, idp)
+            await client.patch("/api/v1/profile", headers=headers, json=SCHOOL_NO_GRADE)
+            started = await start(client, headers)
+            turn = await answer(client, headers, started["session"]["id"], "4.52 out of 5")
+            education = (await client.get("/api/v1/profile", headers=headers)).json()["education"]
+
+        assert turn.json()["recorded"] == ["grade: 4.52/5"]
+        assert education[0]["grade"] == "4.52/5"
+
+    async def test_a_course_with_no_school_is_not_stored(
+        self, make_app: AppFactory, idp: FakeIdentityProvider
+    ) -> None:
+        """An education entry without a school would break the profile the next time it is read."""
+        llm = Scripted(facts(qualification="BSc", field_of_study="Computer Science"))
+        async with running(app_with(llm, make_app)) as client:
+            headers = await bare_sign_in(client, idp)
+            await client.patch(
+                "/api/v1/profile",
+                headers=headers,
+                json={"basics": {"full_name": "Ada Lovelace", "phone": "08012345678"}},
+            )
+            started = await start(client, headers)
+            turn = await answer(
+                client, headers, started["session"]["id"], "a BSc in Computer Science"
+            )
+            profile = await client.get("/api/v1/profile", headers=headers)
+
+        assert turn.status_code == 201
+        assert profile.status_code == 200
+        assert profile.json()["education"] == []
+
+    async def test_the_closing_says_what_a_resume_still_needs(
+        self, make_app: AppFactory, idp: FakeIdentityProvider
+    ) -> None:
+        """Skipping everything is allowed; being told the record is ready is not."""
+        app = make_app(ai_provider="disabled")
+        async with running(app) as client:
+            headers = await bare_sign_in(client, idp)
+            interview_id = (await start(client, headers))["session"]["id"]
+            reply: dict[str, Any] = {}
+            for _ in range(MAX_QUESTIONS):
+                turn = (await answer(client, headers, interview_id, "skip")).json()
+                reply = turn["reply"]
+                if turn["completed"]:
+                    break
+
+        assert "still needs" in reply["content"]
+        assert "your name" in reply["content"]
+        assert "your education" in reply["content"]
+
+
+@pytest.mark.usefixtures("db_engine")
+class TestContinuingAfterAnUpload:
+    async def test_it_moves_past_what_the_document_answered(
+        self, make_app: AppFactory, idp: FakeIdentityProvider
+    ) -> None:
+        llm = Scripted()
+        async with running(app_with(llm, make_app)) as client:
+            headers = await bare_sign_in(client, idp)
+            interview_id = (await start(client, headers))["session"]["id"]
+            # What an accepted import writes: the name, contact details and school.
+            await client.patch("/api/v1/profile", headers=headers, json=ABOUT_THEM)
+
+            response = await client.post(f"{INTERVIEWS}/{interview_id}/continue", headers=headers)
+
+        assert response.status_code == 200
+        reply = response.json()["reply"]["content"]
+        assert reply.startswith("Thanks — I've added what you confirmed from your document.")
+        assert "What's your full name" not in reply
+        assert response.json()["recorded"] == []
+
+    async def test_an_unanswered_question_is_asked_again(
+        self, make_app: AppFactory, idp: FakeIdentityProvider
+    ) -> None:
+        """The document did not give a name, so the name question still stands."""
+        llm = Scripted()
+        async with running(app_with(llm, make_app)) as client:
+            headers = await bare_sign_in(client, idp)
+            interview_id = (await start(client, headers))["session"]["id"]
+
+            response = await client.post(f"{INTERVIEWS}/{interview_id}/continue", headers=headers)
+
+        assert "What's your full name" in response.json()["reply"]["content"]
+
+    async def test_another_account_cannot_continue_it(
+        self, make_app: AppFactory, idp: FakeIdentityProvider
+    ) -> None:
+        llm = Scripted()
+        async with running(app_with(llm, make_app)) as client:
+            owner = await bare_sign_in(client, idp)
+            interview_id = (await start(client, owner))["session"]["id"]
+            intruder = bearer(idp.token(subject=str(uuid.uuid4()), email="eve@example.com"))
+            await client.get("/api/v1/me", headers=intruder)
+
+            response = await client.post(f"{INTERVIEWS}/{interview_id}/continue", headers=intruder)
+
+        assert response.status_code == 404

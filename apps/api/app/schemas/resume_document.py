@@ -96,6 +96,7 @@ class ResumeEducation(DocumentModel):
     institution: str = Field(min_length=1, max_length=200)
     qualification: str | None = Field(default=None, max_length=200)
     field_of_study: str | None = Field(default=None, max_length=200)
+    grade: str | None = Field(default=None, max_length=120)
     location: str | None = Field(default=None, max_length=120)
     start_date: MonthString | None = None
     end_date: MonthString | None = None

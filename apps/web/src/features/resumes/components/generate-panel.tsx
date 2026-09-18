@@ -1,24 +1,28 @@
 "use client";
 
-import { SparklesIcon } from "lucide-react";
+import { MessagesSquareIcon, SparklesIcon } from "lucide-react";
+import Link from "next/link";
 import { useState } from "react";
 import { toast } from "sonner";
 
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
 import { Field, FieldDescription, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
+import { isReady, ReadinessChecklist } from "@/features/profile/components/readiness-checklist";
+import { useReadiness } from "@/features/profile/hooks";
 import type { DocumentType, ResumeTemplate } from "@/features/resumes/api";
 import { useGenerateVersion } from "@/features/resumes/hooks";
 import { ApiError, errorMessage } from "@/lib/api/errors";
+import { routes } from "@/lib/routes";
 import { cn } from "@/lib/utils";
 
 /** Refusals the user can act on. Anything else is a failure, and is reported as one. */
 const REFUSAL_TITLES: Record<string, string> = {
   GENERATION_BLOCKED: "Draft refused",
-  PROFILE_INCOMPLETE: "Nothing to write from yet",
+  PROFILE_INCOMPLETE: "Your record isn't ready yet",
   PROFILE_CONTAINS_INSTRUCTIONS: "Some lines need rewriting",
 };
 const REFUSAL_CODES = new Set(Object.keys(REFUSAL_TITLES));
@@ -51,6 +55,10 @@ export function GeneratePanel({
     problems: string[];
   } | null>(null);
   const generate = useGenerateVersion(resumeId);
+  const readiness = useReadiness();
+  // If the check itself fails to load, writing is still allowed: the API refuses an incomplete
+  // record either way, and a failed check should not lock anyone out.
+  const notReady = readiness.data ? !isReady(readiness.data, isLetter) : false;
 
   async function onGenerate() {
     setBlocked(null);
@@ -93,6 +101,27 @@ export function GeneratePanel({
           ? "The advert decides which of your experience leads. It never adds to it: if the letter would claim something you haven't told us, it's refused instead."
           : "Workaholic rewrites what you recorded so it reads well. It never adds a number, a tool or an employer you didn't mention — if the wording would go beyond your record, the draft is refused instead."}
       </p>
+
+      {notReady && readiness.data ? (
+        <div className="mt-5 rounded-lg border border-dashed p-4">
+          <p className="text-sm font-medium">
+            Before we write {isLetter ? "this letter" : "this resume"}, your record needs:
+          </p>
+          <ReadinessChecklist readiness={readiness.data} letter={isLetter} className="mt-3" />
+          <div className="mt-4 flex flex-wrap gap-3">
+            <Link href={routes.assistant} className={buttonVariants({ size: "sm" })}>
+              <MessagesSquareIcon aria-hidden="true" />
+              Talk me through it
+            </Link>
+            <Link
+              href={routes.profile}
+              className={buttonVariants({ size: "sm", variant: "outline" })}
+            >
+              Fill it in myself
+            </Link>
+          </div>
+        </div>
+      ) : null}
 
       {isLetter ? (
         <div className="mt-5 space-y-4">
@@ -185,7 +214,7 @@ export function GeneratePanel({
       <Button
         className="mt-5"
         onClick={() => void onGenerate()}
-        disabled={generate.isPending || (isLetter && !brief.company.trim())}
+        disabled={generate.isPending || notReady || (isLetter && !brief.company.trim())}
       >
         {generate.isPending ? <Spinner /> : <SparklesIcon aria-hidden="true" />}
         {generate.isPending

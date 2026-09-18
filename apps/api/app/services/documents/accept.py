@@ -110,6 +110,7 @@ async def accept_import(
                 "institution": entry.institution,
                 "qualification": entry.qualification or None,
                 "field_of_study": entry.field_of_study or None,
+                "grade": entry.grade or None,
                 "start_date": entry.start_date or None,
                 "end_date": entry.end_date or None,
             }

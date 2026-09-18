@@ -146,6 +146,21 @@ class CandidateProfileRead(CandidateModel):
     updated_at: datetime
 
 
+class ReadinessItemRead(BaseModel):
+    key: str
+    label: str
+    done: bool
+    hint: str
+
+
+class ProfileReadinessRead(BaseModel):
+    """What a document needs from the record, checked before anything is written."""
+
+    resume_ready: bool
+    cover_letter_ready: bool
+    items: list[ReadinessItemRead]
+
+
 class CandidateProfileUpdate(CandidateModel):
     """Partial update: only the sections present are replaced."""
 

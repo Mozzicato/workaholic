@@ -12,6 +12,10 @@ from app.services.interview.extraction import ExtractedFacts, ground
 
 EMPTY: dict[str, Any] = {
     "usable": True,
+    "full_name": "",
+    "email": "",
+    "phone": "",
+    "location": "",
     "employer": "",
     "title": "",
     "start_date": "",
@@ -26,6 +30,7 @@ EMPTY: dict[str, Any] = {
     "institution": "",
     "qualification": "",
     "field_of_study": "",
+    "grade": "",
     "certification_name": "",
 }
 
@@ -160,3 +165,56 @@ class TestUsability:
         facts = ground(extraction(skills=["Python"]), "I am comfortable with Python")
 
         assert not facts.is_empty
+
+
+class TestAboutThem:
+    """The walk-through starts with the person: their name, how to reach them, their grade."""
+
+    def test_a_name_they_said(self) -> None:
+        kept = ground(extraction(full_name="Ada Lovelace"), "my name is ada lovelace")
+        assert kept.full_name == "Ada Lovelace"
+
+    def test_a_name_they_did_not_say(self) -> None:
+        kept = ground(extraction(full_name="Ada King Lovelace"), "I'm Ada Lovelace")
+        assert kept.full_name == ""
+        assert "Ada King Lovelace" in kept.dropped
+
+    def test_a_typed_email(self) -> None:
+        kept = ground(extraction(email="ada@lovelace.dev"), "email me at ada@lovelace.dev")
+        assert kept.email == "ada@lovelace.dev"
+
+    def test_a_spoken_email(self) -> None:
+        """Said aloud, an address arrives as words. It is still the address they gave."""
+        kept = ground(extraction(email="ada.king@gmail.com"), "it's ada dot king at gmail dot com")
+        assert kept.email == "ada.king@gmail.com"
+
+    def test_an_email_with_a_guessed_domain(self) -> None:
+        kept = ground(extraction(email="ada@gmail.com"), "my email is ada at the usual place")
+        assert kept.email == ""
+        assert "ada@gmail.com" in kept.dropped
+
+    def test_a_phone_number_they_said(self) -> None:
+        kept = ground(extraction(phone="0801 234 5678"), "call me on 08012345678")
+        assert kept.phone == "0801 234 5678"
+
+    def test_a_country_code_they_did_not_give(self) -> None:
+        kept = ground(extraction(phone="+234 801 234 5678"), "call me on 0801 234 5678")
+        assert kept.phone == ""
+
+    def test_a_grade_as_stated(self) -> None:
+        kept = ground(extraction(grade="4.52/5"), "I have a 4.52 out of 5 CGPA")
+        assert kept.grade == "4.52/5"
+
+    def test_a_class_of_degree(self) -> None:
+        kept = ground(extraction(grade="Second Class Upper"), "second class upper, so far")
+        assert kept.grade == "Second Class Upper"
+
+    def test_a_grade_converted_to_another_scale(self) -> None:
+        """4.5 out of 5 is not "3.6/4". Converting a grade is inventing one."""
+        kept = ground(extraction(grade="3.6/4"), "4.5 out of 5")
+        assert kept.grade == ""
+        assert "3.6/4" in kept.dropped
+
+    def test_contact_details_alone_are_something(self) -> None:
+        kept = ground(extraction(email="ada@lovelace.dev"), "ada@lovelace.dev")
+        assert not kept.is_empty

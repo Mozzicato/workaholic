@@ -14,7 +14,7 @@ from pydantic import BaseModel, ConfigDict
 from app.prompts.documents import PARSE_PROMPT_VERSION, build_parse_messages
 from app.prompts.documents.parse import ParseContext
 from app.services.ai.base import LLMProvider
-from app.services.interview.extraction import ExtractedFacts, ground
+from app.services.interview.extraction import ExtractedFacts, grade_stated, ground
 from app.services.resume.validation import check_text, vocabulary_of
 
 logger = structlog.get_logger(__name__)
@@ -49,6 +49,8 @@ class ParsedEducation(BaseModel):
     field_of_study: str
     start_date: str
     end_date: str
+    # Defaulted so a client from before grades were read can still accept an import.
+    grade: str = ""
 
 
 class DocumentContents(BaseModel):
@@ -172,6 +174,7 @@ def _ground(contents: DocumentContents, text: str) -> tuple[DocumentContents, li
             field_of_study=_unless_repeated(named(entry.field_of_study), qualification),
             start_date=entry.start_date if entry.start_date[:4] in text else "",
             end_date=entry.end_date if entry.end_date[:4] in text else "",
+            grade=entry.grade.strip() if grade_stated(entry.grade, text) else "",
         )
         for entry in contents.education
         if (institution := named(entry.institution))
@@ -196,6 +199,10 @@ def _as_facts(role: ParsedRole) -> ExtractedFacts:
     """Reuse the interview's date grounding, which already knows how to read a stated date."""
     return ExtractedFacts(
         usable=True,
+        full_name="",
+        email="",
+        phone="",
+        location="",
         employer=role.employer,
         title=role.title,
         start_date=role.start_date,
@@ -210,6 +217,7 @@ def _as_facts(role: ParsedRole) -> ExtractedFacts:
         institution="",
         qualification="",
         field_of_study="",
+        grade="",
         certification_name="",
     )
 

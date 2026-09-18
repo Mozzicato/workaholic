@@ -7,6 +7,7 @@ import { getApiClient } from "@/lib/api/browser";
 
 import {
   abandonInterview,
+  continueInterview,
   getInterview,
   listInterviews,
   sendAnswer,
@@ -54,6 +55,16 @@ export function useSendAnswer(interviewId: string) {
       void queryClient.invalidateQueries({ queryKey: interviewKeys.detail(interviewId) });
       // The record just grew: anything showing it has to refetch.
       void queryClient.invalidateQueries({ queryKey: profileKeys.profile });
+    },
+  });
+}
+
+export function useContinueInterview(interviewId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: () => continueInterview(getApiClient(), interviewId),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: interviewKeys.detail(interviewId) });
     },
   });
 }

@@ -13,7 +13,7 @@ from pydantic import BaseModel, ConfigDict
 
 from app.services.resume.validation import check_text, vocabulary_of
 
-__all__ = ["ExtractedFacts", "GroundedFacts", "ground"]
+__all__ = ["ExtractedFacts", "GroundedFacts", "grade_stated", "ground"]
 
 _YEAR = re.compile(r"(19|20)\d{2}")
 _WORD = re.compile(r"[A-Za-z][A-Za-z0-9'.+#-]*")
@@ -21,6 +21,10 @@ _WORD = re.compile(r"[A-Za-z][A-Za-z0-9'.+#-]*")
 _JOINING_WORDS = frozenset(
     {"a", "an", "and", "at", "by", "for", "in", "of", "on", "or", "the", "to", "with"}
 )
+_EMAIL = re.compile(r"[a-z0-9._%+-]+@[a-z0-9-]+(\.[a-z0-9-]+)+")
+_SPOKEN_AT = re.compile(r"\s+at\s+")
+_SPOKEN_DOT = re.compile(r"\s+dot\s+")
+_GRADE_TOKEN = re.compile(r"[A-Za-z]+|\d+(?:\.\d+)?")
 _MONTH_NAMES = (
     "january",
     "february",
@@ -43,6 +47,10 @@ class ExtractedFacts(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     usable: bool
+    full_name: str
+    email: str
+    phone: str
+    location: str
     employer: str
     title: str
     start_date: str
@@ -57,6 +65,7 @@ class ExtractedFacts(BaseModel):
     institution: str
     qualification: str
     field_of_study: str
+    grade: str
     certification_name: str
 
 
@@ -65,6 +74,10 @@ class GroundedFacts:
     """The parts of an extraction the answer supports."""
 
     usable: bool = False
+    full_name: str = ""
+    email: str = ""
+    phone: str = ""
+    location: str = ""
     employer: str = ""
     title: str = ""
     start_date: str = ""
@@ -79,6 +92,7 @@ class GroundedFacts:
     institution: str = ""
     qualification: str = ""
     field_of_study: str = ""
+    grade: str = ""
     certification_name: str = ""
     dropped: list[str] = field(default_factory=list)
 
@@ -86,6 +100,11 @@ class GroundedFacts:
     def is_empty(self) -> bool:
         return not any(
             (
+                self.full_name,
+                self.email,
+                self.phone,
+                self.location,
+                self.grade,
                 self.employer,
                 self.title,
                 self.project_name,
@@ -108,6 +127,8 @@ def ground(facts: ExtractedFacts, answer: str) -> GroundedFacts:
     # Names are checked word by word: "Google" on its own is capitalised like any first word,
     # so only membership in what the person said can tell an employer from an invention.
     for name in (
+        "full_name",
+        "location",
         "employer",
         "title",
         "project_name",
@@ -148,6 +169,10 @@ def ground(facts: ExtractedFacts, answer: str) -> GroundedFacts:
                 grounded.dropped.append(text)
         setattr(grounded, name, kept)
 
+    grounded.email = _grounded_email(facts.email, answer, grounded)
+    grounded.phone = _grounded_phone(facts.phone, answer, grounded)
+    grounded.grade = _grounded_grade(facts.grade, answer, grounded)
+
     grounded.start_date = _grounded_date(facts.start_date, answer, grounded)
     grounded.end_date = _grounded_date(facts.end_date, answer, grounded)
     if grounded.is_current:
@@ -171,6 +196,54 @@ def _named_in(value: str, answer: str) -> bool:
     if not words:
         return False
     return all(word in known for word in words) and _supported(value, answer)
+
+
+def _grounded_email(value: str, answer: str, grounded: GroundedFacts) -> str:
+    """An address is kept only when the answer spells it out, typed or spoken.
+
+    Said aloud, "ada at gmail dot com" is transcribed as words; that is the same address, so the
+    answer is read both ways. Anything else — a guessed domain, a completed username — is dropped.
+    """
+    email = value.strip().lower()
+    if not email:
+        return ""
+    heard = _SPOKEN_AT.sub("@", answer.lower())
+    heard = _SPOKEN_DOT.sub(".", heard)
+    heard = re.sub(r"\s+", "", heard)
+    if _EMAIL.fullmatch(email) and email in heard:
+        return email
+    grounded.dropped.append(value.strip())
+    return ""
+
+
+def _grounded_phone(value: str, answer: str, grounded: GroundedFacts) -> str:
+    """A number is kept only when its digits appear, in order, in what was said."""
+    phone = value.strip()
+    digits = re.sub(r"\D", "", phone)
+    if not phone:
+        return ""
+    if 7 <= len(digits) <= 15 and digits in re.sub(r"\D", "", answer):
+        return phone
+    grounded.dropped.append(phone)
+    return ""
+
+
+def _grounded_grade(value: str, answer: str, grounded: GroundedFacts) -> str:
+    """A grade is kept only when every part of it was said: "4.52/5" or "Second Class Upper"."""
+    grade = value.strip()
+    if not grade:
+        return ""
+    if grade_stated(grade, answer):
+        return grade
+    grounded.dropped.append(grade)
+    return ""
+
+
+def grade_stated(grade: str, text: str) -> bool:
+    """True when every part of this grade appears in the text, so none of it was converted."""
+    said = {token.lower() for token in _GRADE_TOKEN.findall(text)}
+    parts = [token.lower() for token in _GRADE_TOKEN.findall(grade)]
+    return bool(parts) and all(part in said for part in parts)
 
 
 def _grounded_date(value: str, answer: str, grounded: GroundedFacts) -> str:

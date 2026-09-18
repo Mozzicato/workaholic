@@ -11,7 +11,7 @@ from typing import Any
 from app.services.interview.extraction import GroundedFacts
 from app.services.interview.gaps import Gap, Topic
 
-__all__ = ["Applied", "apply_facts"]
+__all__ = ["Applied", "apply_basics", "apply_facts"]
 
 
 class Applied:
@@ -27,6 +27,30 @@ class Applied:
     @property
     def changed(self) -> bool:
         return bool(self.notes)
+
+
+_BASICS_LABELS = (
+    ("full_name", "name"),
+    ("email", "email"),
+    ("phone", "phone"),
+    ("location", "location"),
+)
+
+
+def apply_basics(basics: dict[str, Any], facts: GroundedFacts) -> list[str]:
+    """Fill in name and contact details the record does not have yet.
+
+    Only empty fields are filled. A name or address the person typed themselves is theirs, and a
+    passing mention in an answer — "my old email was..." — must never replace it.
+    """
+    notes: list[str] = []
+    for key, label in _BASICS_LABELS:
+        value: str = getattr(facts, key)
+        if not value or _text(basics.get(key)):
+            continue
+        basics[key] = _title_if_flat(value) if key in ("full_name", "location") else value
+        notes.append(f"{label}: {basics[key]}")
+    return notes
 
 
 def apply_facts(
@@ -67,6 +91,14 @@ def apply_facts(
             )
             _extend(project, "technologies", _tools(facts.technologies), applied, "tools")
             applied.item_id = _identity(project)
+            return applied
+
+    if gap.topic is Topic.GRADE:
+        school = _find(sections.setdefault("education", []), gap.item_id)
+        if school is not None and facts.grade and not school.get("grade"):
+            school["grade"] = facts.grade
+            applied.item_id = _identity(school)
+            applied.note(f"grade: {facts.grade}")
             return applied
 
     if gap.topic is Topic.TECHNOLOGIES:
@@ -115,13 +147,16 @@ def apply_facts(
             applied.note(", ".join(added))
         return applied
 
-    if facts.institution or facts.qualification:
+    # A school is the one thing an education entry cannot be without: a course with no school
+    # would be refused by the profile the next time it was read.
+    if facts.institution:
         education = sections.setdefault("education", [])
         entry = {
             "id": str(uuid.uuid4()),
-            "institution": _title_if_flat(facts.institution) or None,
+            "institution": _title_if_flat(facts.institution),
             "qualification": _title_if_flat(facts.qualification) or None,
-            "field_of_study": facts.field_of_study or None,
+            "field_of_study": _title_if_flat(facts.field_of_study) or None,
+            "grade": facts.grade or None,
             "start_date": facts.start_date or None,
             "end_date": facts.end_date or None,
         }

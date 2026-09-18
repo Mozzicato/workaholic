@@ -30,6 +30,28 @@ const ACCEPT =
  * something the document never said cannot reach the record without passing their eyes first.
  */
 export function ImportSection() {
+  return (
+    <SectionCard
+      id="import"
+      title="Start from an existing resume"
+      description="Upload a PDF or Word file. We read it and show you what it says — you choose what goes into your record, and nothing is added until you do."
+    >
+      <DocumentImport />
+    </SectionCard>
+  );
+}
+
+/**
+ * The upload, review and accept steps on their own, so the assistant can offer them mid-conversation.
+ * `onImported` runs once something has actually been added; `onCancel` when they back out.
+ */
+export function DocumentImport({
+  onImported,
+  onCancel,
+}: {
+  onImported?: () => void;
+  onCancel?: () => void;
+}) {
   const queryClient = useQueryClient();
   const input = useRef<HTMLInputElement>(null);
   const [proposal, setProposal] = useState<ImportProposal | null>(null);
@@ -54,53 +76,53 @@ export function ImportSection() {
           ? `Added ${result.added.length} item${result.added.length === 1 ? "" : "s"} to your record`
           : "Everything was already in your record",
       );
+      onImported?.();
     },
     onError: (error) => toast.error(errorMessage(error)),
   });
 
-  return (
-    <SectionCard
-      id="import"
-      title="Start from an existing resume"
-      description="Upload a PDF or Word file. We read it and show you what it says — you choose what goes into your record, and nothing is added until you do."
-    >
-      {proposal ? (
-        <Review
-          proposal={proposal}
-          chosen={chosen}
-          onToggle={(key) => setChosen((current) => ({ ...current, [key]: !current[key] }))}
-          onCancel={() => setProposal(null)}
-          accepting={accept.isPending}
-          onAccept={() => accept.mutate(selected(proposal.contents, chosen))}
-        />
-      ) : (
-        <div>
-          <input
-            ref={input}
-            type="file"
-            accept={ACCEPT}
-            className="sr-only"
-            aria-label="Choose a resume to upload"
-            onChange={(event) => {
-              const file = event.target.files?.[0];
-              event.target.value = "";
-              if (file) upload.mutate(file);
-            }}
-          />
-          <Button
-            variant="outline"
-            disabled={upload.isPending}
-            onClick={() => input.current?.click()}
-          >
-            {upload.isPending ? <Spinner /> : <FileUpIcon aria-hidden="true" />}
-            {upload.isPending ? "Reading it…" : "Upload a resume"}
+  return proposal ? (
+    <Review
+      proposal={proposal}
+      chosen={chosen}
+      onToggle={(key) => setChosen((current) => ({ ...current, [key]: !current[key] }))}
+      onCancel={() => setProposal(null)}
+      accepting={accept.isPending}
+      onAccept={() => accept.mutate(selected(proposal.contents, chosen))}
+    />
+  ) : (
+    <div>
+      <input
+        ref={input}
+        type="file"
+        accept={ACCEPT}
+        className="sr-only"
+        aria-label="Choose a resume to upload"
+        onChange={(event) => {
+          const file = event.target.files?.[0];
+          event.target.value = "";
+          if (file) upload.mutate(file);
+        }}
+      />
+      <div className="flex flex-wrap gap-2">
+        <Button
+          variant="outline"
+          disabled={upload.isPending}
+          onClick={() => input.current?.click()}
+        >
+          {upload.isPending ? <Spinner /> : <FileUpIcon aria-hidden="true" />}
+          {upload.isPending ? "Reading it…" : "Upload a resume"}
+        </Button>
+        {onCancel ? (
+          <Button variant="ghost" disabled={upload.isPending} onClick={onCancel}>
+            Not now
           </Button>
-          <p className="mt-2 text-xs text-muted-foreground">
-            PDF or DOCX, up to 8 MB. The file itself isn&apos;t kept — only what you choose to add.
-          </p>
-        </div>
-      )}
-    </SectionCard>
+        ) : null}
+      </div>
+      <p className="mt-2 text-xs text-muted-foreground">
+        PDF or DOCX, up to 8 MB. The file itself isn&apos;t kept — only what you choose to add.
+      </p>
+    </div>
   );
 }
 
@@ -187,7 +209,12 @@ function Review({
               checked={Boolean(chosen[`education-${index}`])}
               onToggle={onToggle}
               label={[entry.qualification, entry.institution].filter(Boolean).join(", ")}
-              detail={[entry.start_date, entry.end_date].filter(Boolean).join(" – ")}
+              detail={[
+                [entry.start_date, entry.end_date].filter(Boolean).join(" – "),
+                entry.grade && `Grade: ${entry.grade}`,
+              ]
+                .filter(Boolean)
+                .join(" · ")}
             />
           ))}
         </Group>

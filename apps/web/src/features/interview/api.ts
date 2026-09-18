@@ -66,6 +66,14 @@ export function sendAnswer(api: ApiClient, interviewId: string, text: string): P
   });
 }
 
+/** After a document was imported mid-conversation: the next question, from the record as it is now. */
+export function continueInterview(api: ApiClient, interviewId: string): Promise<Turn> {
+  return api.request(`/api/v1/interviews/${interviewId}/continue`, {
+    method: "POST",
+    schema: turnSchema,
+  });
+}
+
 export function abandonInterview(api: ApiClient, interviewId: string): Promise<InterviewSession> {
   return api.request(`/api/v1/interviews/${interviewId}/abandon`, {
     method: "POST",

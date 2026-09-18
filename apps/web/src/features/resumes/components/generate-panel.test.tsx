@@ -29,6 +29,42 @@ const VERSION = {
   created_at: "2026-09-18T10:00:00Z",
 };
 
+const READY = {
+  resume_ready: true,
+  cover_letter_ready: true,
+  items: [
+    { key: "name", label: "Your name", done: true, hint: "" },
+    { key: "contact", label: "A way to contact you", done: true, hint: "" },
+    { key: "education", label: "Your education", done: true, hint: "" },
+    { key: "experience_or_projects", label: "Something you've done", done: true, hint: "" },
+    { key: "skills", label: "Your skills", done: true, hint: "" },
+  ],
+};
+
+const NO_SCHOOL = {
+  ...READY,
+  resume_ready: false,
+  items: READY.items.map((item) =>
+    item.key === "education"
+      ? { ...item, done: false, hint: "Where you studied, or are studying." }
+      : item,
+  ),
+};
+
+let readiness: unknown = READY;
+
+/** The readiness check and the write share one client; answer each by its path. */
+function writing(result: unknown) {
+  request.mockImplementation((path: string) => {
+    if (path === "/api/v1/profile/readiness") return Promise.resolve(readiness);
+    return result instanceof Error ? Promise.reject(result) : Promise.resolve(result);
+  });
+}
+
+function writes() {
+  return request.mock.calls.filter(([path]) => String(path).endsWith("/versions"));
+}
+
 function renderPanel(hasVersions = false, documentType: "resume" | "cover_letter" = "resume") {
   const onGenerated = vi.fn();
   const view = renderWithQueryClient(
@@ -46,13 +82,15 @@ function renderPanel(hasVersions = false, documentType: "resume" | "cover_letter
 describe("GeneratePanel", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    readiness = READY;
+    writing(VERSION);
   });
 
   it("writes a draft with the standard template by default", async () => {
-    request.mockResolvedValue(VERSION);
+    writing(VERSION);
     const { user, onGenerated } = renderPanel();
 
-    await user.click(screen.getByRole("button", { name: "Write my resume" }));
+    await user.click(await screen.findByRole("button", { name: "Write my resume" }));
 
     await vi.waitFor(() => expect(onGenerated).toHaveBeenCalledWith(VERSION.id));
     expect(request).toHaveBeenCalledWith(
@@ -62,14 +100,14 @@ describe("GeneratePanel", () => {
   });
 
   it("sends the template the user picked", async () => {
-    request.mockResolvedValue({ ...VERSION, template: "academic" });
+    writing({ ...VERSION, template: "academic" });
     const { user } = renderPanel();
 
     await user.click(screen.getByRole("button", { name: /Academic/ }));
     await user.click(screen.getByRole("button", { name: "Write my resume" }));
 
-    await vi.waitFor(() => expect(request).toHaveBeenCalled());
-    expect(request.mock.calls[0][1].body).toEqual({ template: "academic" });
+    await vi.waitFor(() => expect(writes()).toHaveLength(1));
+    expect(writes()[0][1].body).toEqual({ template: "academic" });
   });
 
   it("marks the chosen template for assistive technology", async () => {
@@ -85,7 +123,7 @@ describe("GeneratePanel", () => {
   });
 
   it("shows exactly what the draft added when it is refused", async () => {
-    request.mockRejectedValue(
+    writing(
       new ApiError({
         status: 422,
         code: "GENERATION_BLOCKED",
@@ -107,7 +145,7 @@ describe("GeneratePanel", () => {
   });
 
   it("asks for material when the record is empty", async () => {
-    request.mockRejectedValue(
+    writing(
       new ApiError({
         status: 422,
         code: "PROFILE_INCOMPLETE",
@@ -118,7 +156,7 @@ describe("GeneratePanel", () => {
 
     await user.click(screen.getByRole("button", { name: "Write my resume" }));
 
-    expect(await screen.findByText("Nothing to write from yet")).toBeInTheDocument();
+    expect(await screen.findByText("Your record isn't ready yet")).toBeInTheDocument();
     expect(
       screen.getByText("Add a role or project with at least one line about what you did."),
     ).toBeInTheDocument();
@@ -126,7 +164,7 @@ describe("GeneratePanel", () => {
   });
 
   it("names the lines that read as instructions", async () => {
-    request.mockRejectedValue(
+    writing(
       new ApiError({
         status: 422,
         code: "PROFILE_CONTAINS_INSTRUCTIONS",
@@ -146,15 +184,26 @@ describe("GeneratePanel", () => {
   });
 
   it("reports any other failure without pretending it worked", async () => {
-    request.mockRejectedValue(
-      new ApiError({ status: 503, code: "AI_UNAVAILABLE", message: "Try again shortly." }),
-    );
+    writing(new ApiError({ status: 503, code: "AI_UNAVAILABLE", message: "Try again shortly." }));
     const { user, onGenerated } = renderPanel();
 
     await user.click(screen.getByRole("button", { name: "Write my resume" }));
 
     await vi.waitFor(() => expect(toastError).toHaveBeenCalledWith("Try again shortly."));
     expect(onGenerated).not.toHaveBeenCalled();
+  });
+
+  it("will not write a resume until the record has what one needs", async () => {
+    readiness = NO_SCHOOL;
+    renderPanel();
+
+    expect(await screen.findByText("Where you studied, or are studying.")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Write my resume" })).toBeDisabled();
+    expect(screen.getByRole("link", { name: /Talk me through it/ })).toHaveAttribute(
+      "href",
+      "/assistant",
+    );
+    expect(writes()).toHaveLength(0);
   });
 
   it("offers another draft once one exists", () => {
@@ -167,6 +216,8 @@ describe("GeneratePanel", () => {
 describe("GeneratePanel for a cover letter", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    readiness = READY;
+    writing(VERSION);
   });
 
   it("will not write a letter without knowing the company", async () => {
@@ -175,24 +226,36 @@ describe("GeneratePanel for a cover letter", () => {
     const write = screen.getByRole("button", { name: "Write my letter" });
     expect(write).toBeDisabled();
     await user.click(write);
-    expect(request).not.toHaveBeenCalled();
+    expect(writes()).toHaveLength(0);
   });
 
   it("sends the brief, and the advert with it", async () => {
-    request.mockResolvedValue({ ...VERSION, content: {} });
+    writing({ ...VERSION, content: {} });
     const { user } = renderPanel(false, "cover_letter");
 
     await user.type(screen.getByLabelText("Company"), "Northwind Logistics");
     await user.type(screen.getByLabelText("The advert (optional)"), "We use Kubernetes.");
     await user.click(screen.getByRole("button", { name: "Write my letter" }));
 
-    await vi.waitFor(() => expect(request).toHaveBeenCalled());
-    expect(request.mock.calls[0][1].body.brief).toEqual({
+    await vi.waitFor(() => expect(writes()).toHaveLength(1));
+    expect(writes()[0][1].body.brief).toEqual({
       company: "Northwind Logistics",
       role: "Junior Backend Engineer",
       hiring_manager: null,
       job_advert: "We use Kubernetes.",
     });
+  });
+
+  it("does not ask for education before writing a letter", async () => {
+    readiness = { ...NO_SCHOOL, cover_letter_ready: true };
+    const { user } = renderPanel(false, "cover_letter");
+
+    await user.type(screen.getByLabelText("Company"), "Northwind Logistics");
+
+    await vi.waitFor(() =>
+      expect(screen.getByRole("button", { name: "Write my letter" })).toBeEnabled(),
+    );
+    expect(screen.queryByText("Where you studied, or are studying.")).not.toBeInTheDocument();
   });
 
   it("offers no template choice, because a letter has one shape", () => {

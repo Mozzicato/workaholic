@@ -3,9 +3,12 @@ import { describe, expect, it } from "vitest";
 import { isProtectedPath, loginPathFor, safeNextPath } from "./routes";
 
 describe("safeNextPath", () => {
-  it.each(["/dashboard", "/resumes/123?tab=ats", "/jobs#top"])("accepts same-site path %s", (path) => {
-    expect(safeNextPath(path)).toBe(path);
-  });
+  it.each(["/dashboard", "/resumes/123?tab=ats", "/jobs#top"])(
+    "accepts same-site path %s",
+    (path) => {
+      expect(safeNextPath(path)).toBe(path);
+    },
+  );
 
   it.each([
     ["missing", null],
@@ -21,9 +24,12 @@ describe("safeNextPath", () => {
 });
 
 describe("isProtectedPath", () => {
-  it.each(["/dashboard", "/resumes", "/resumes/abc/editor", "/jobs/1", "/profile"])("protects %s", (path) => {
-    expect(isProtectedPath(path)).toBe(true);
-  });
+  it.each(["/dashboard", "/assistant", "/resumes", "/resumes/abc/editor", "/jobs/1", "/profile"])(
+    "protects %s",
+    (path) => {
+      expect(isProtectedPath(path)).toBe(true);
+    },
+  );
 
   it.each(["/", "/login", "/signup", "/learn", "/dashboards-are-public", "/auth/callback"])(
     "leaves %s public",

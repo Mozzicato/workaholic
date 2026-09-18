@@ -5,6 +5,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { useProfile } from "@/features/profile/hooks";
 
 import { BasicsForm } from "./basics-form";
+import { EducationSection } from "./education-section";
 import { ExperienceSection } from "./experience-section";
 import { ImportSection } from "./import-section";
 import { ProjectsSection } from "./projects-section";
@@ -37,6 +38,7 @@ export function ProfileView() {
 
       <ImportSection />
       <BasicsForm basics={profile.data.basics} />
+      <EducationSection education={profile.data.education} />
       <ExperienceSection experience={profile.data.experience} />
       <ProjectsSection projects={profile.data.projects} />
       <SkillsSection skills={profile.data.skills} />

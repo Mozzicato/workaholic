@@ -8,6 +8,7 @@ import { cn } from "@/lib/utils";
 
 const LINKS = [
   { href: routes.dashboard, label: "Resumes" },
+  { href: routes.assistant, label: "Assistant" },
   { href: routes.jobs, label: "Jobs" },
   { href: routes.profile, label: "Profile" },
   { href: routes.learn, label: "Learn" },

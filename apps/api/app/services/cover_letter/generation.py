@@ -37,6 +37,7 @@ from app.services.resume.generation import (
     InstructionLikeContentError,
     ProfileIncompleteError,
 )
+from app.services.resume.readiness import DocumentKind, assess_readiness
 from app.services.resume.record import (
     collect_sources,
     items,
@@ -86,6 +87,10 @@ class CoverLetterService:
         template: ResumeTemplate = ResumeTemplate.STANDARD,
     ) -> tuple[CoverLetterDocument, str]:
         """The letter, and the model that wrote it. Nothing is saved here."""
+        readiness = assess_readiness(profile, DocumentKind.COVER_LETTER)
+        if not readiness.ready:
+            raise ProfileIncompleteError.from_readiness(readiness, "cover letter")
+
         blocked = items_awaiting_confirmation(evidence)
         sources = collect_sources(profile, blocked)
         if not sources:

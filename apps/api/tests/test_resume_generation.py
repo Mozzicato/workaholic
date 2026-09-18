@@ -99,6 +99,7 @@ PROFILE: dict[str, Any] = {
             "technologies": ["Python", "PostgreSQL"],
         }
     ],
+    "education": [{"institution": "University of Lagos", "qualification": "BSc"}],
     "skills": [{"name": "Python", "category": "Languages"}],
 }
 

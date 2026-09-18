@@ -126,9 +126,7 @@ export function ExperienceSection({ experience }: { experience: Experience[] }) 
               className="flex items-start gap-4 py-4 first:pt-0 last:pb-0"
             >
               <div className="min-w-0 flex-1 space-y-1">
-                <p className="font-medium">
-                  {item.title} · {item.employer}
-                </p>
+                <p className="font-medium">{roleLabel(item)}</p>
                 <p className="text-sm text-muted-foreground">
                   {[formatRange(item.start_date, item.end_date, item.is_current), item.location]
                     .filter(Boolean)
@@ -156,7 +154,7 @@ export function ExperienceSection({ experience }: { experience: Experience[] }) 
                 <Button
                   variant="ghost"
                   size="icon"
-                  aria-label={`Edit ${item.title} at ${item.employer}`}
+                  aria-label={`Edit ${roleLabel(item, " at ")}`}
                   onClick={() => setEditing({ item, index })}
                 >
                   <PencilIcon aria-hidden="true" />
@@ -164,7 +162,7 @@ export function ExperienceSection({ experience }: { experience: Experience[] }) 
                 <Button
                   variant="ghost"
                   size="icon"
-                  aria-label={`Remove ${item.title} at ${item.employer}`}
+                  aria-label={`Remove ${roleLabel(item, " at ")}`}
                   disabled={updateProfile.isPending}
                   onClick={() => void onRemove(index)}
                 >
@@ -231,8 +229,8 @@ function ExperienceDialog({
     resolver: zodResolver(schema),
     defaultValues: item
       ? {
-          employer: item.employer,
-          title: item.title,
+          employer: item.employer ?? "",
+          title: item.title ?? "",
           location: item.location ?? "",
           is_current: item.is_current,
           start_date: item.start_date ?? "",
@@ -391,4 +389,9 @@ function ExperienceDialog({
       </DialogContent>
     </Dialog>
   );
+}
+
+/** A role recorded in conversation may know only the employer or only the title so far. */
+function roleLabel(item: Experience, joiner = " · "): string {
+  return [item.title, item.employer].filter(Boolean).join(joiner) || "A role";
 }

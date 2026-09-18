@@ -242,6 +242,29 @@ class TestGroundingWhatWasRead:
 
         assert [entry.institution for entry in kept.education] == ["University of Lagos"]
 
+    @pytest.mark.parametrize(
+        ("grade", "kept_as"),
+        [("4.52/5", "4.52/5"), ("Second Class Upper", "Second Class Upper"), ("3.6/4", "")],
+    )
+    def test_a_grade_is_kept_only_as_written(self, grade: str, kept_as: str) -> None:
+        """Converting 4.52/5 to a four-point scale would be inventing a grade."""
+        text = RESUME_TEXT.replace(
+            "BSc Computer Science, University of Lagos",
+            "BSc Computer Science, University of Lagos\nCGPA 4.52/5 (Second Class Upper)",
+        )
+        school = ParsedEducation(
+            institution="University of Lagos",
+            qualification="BSc",
+            field_of_study="",
+            start_date="",
+            end_date="",
+            grade=grade,
+        )
+
+        kept, _ = _ground(DocumentContents(**contents(education=[school])), text)
+
+        assert kept.education[0].grade == kept_as
+
     def test_a_project_the_document_never_mentions_is_dropped(self) -> None:
         proposed = DocumentContents(
             **contents(
@@ -351,7 +374,7 @@ class TestTheEndpoint:
         assert response.status_code == 200
         body = response.json()
         assert body["contents"]["roles"][0]["employer"] == "Lumen Freight"
-        assert body["prompt_version"] == "documents.parse.v1"
+        assert body["prompt_version"] == "documents.parse.v2"
         assert profile.json()["experience"] == [], "nothing is recorded until the user accepts"
 
     async def test_what_the_document_did_not_support_is_reported(

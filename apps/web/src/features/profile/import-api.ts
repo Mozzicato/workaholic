@@ -23,6 +23,7 @@ const educationSchema = z.object({
   field_of_study: z.string(),
   start_date: z.string(),
   end_date: z.string(),
+  grade: z.string().default(""),
 });
 
 export const importContentsSchema = z.object({

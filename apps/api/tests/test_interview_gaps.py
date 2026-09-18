@@ -8,19 +8,24 @@ from typing import Any
 
 from app.services.interview.gaps import Topic, next_gap, open_gaps
 
+KNOWN_BASICS = {"full_name": "Ada Lovelace", "email": "ada@lovelace.dev"}
+KNOWN_SCHOOL = [{"id": "s1", "institution": "Unilag", "grade": "4.5/5"}]
+
 
 class Profile:
-    """Just enough of a candidate profile for the gap rules."""
+    """Just enough of a candidate profile for the gap rules.
+
+    Name, contact and school default to known, so tests about work start where the work does.
+    """
 
     def __init__(self, **sections: Any) -> None:
-        for name in (
-            "experience",
-            "projects",
-            "skills",
-            "education",
-            "certifications",
-        ):
+        self.basics = sections.get("basics", KNOWN_BASICS)
+        self.education = sections.get("education", KNOWN_SCHOOL)
+        for name in ("experience", "projects", "skills", "certifications"):
             setattr(self, name, sections.get(name, []))
+
+
+NOBODY_YET = {"basics": {}, "education": []}
 
 
 ROLE = {
@@ -33,7 +38,33 @@ ROLE = {
 
 
 class TestPriority:
-    def test_an_empty_record_starts_with_work_history(self) -> None:
+    def test_an_empty_record_starts_with_their_name(self) -> None:
+        gap = next_gap(Profile(**NOBODY_YET))
+
+        assert gap is not None
+        assert gap.topic is Topic.NAME
+
+    def test_it_walks_through_who_they_are_before_what_they_did(self) -> None:
+        """Name, contact, school, grade, then work: the order a person fills a resume in."""
+        topics = [gap.topic for gap in open_gaps(Profile(**NOBODY_YET))]
+
+        assert topics[:4] == [Topic.NAME, Topic.CONTACT, Topic.EDUCATION, Topic.EXPERIENCE]
+
+    def test_a_school_without_a_grade_is_asked_about_before_work(self) -> None:
+        gaps = open_gaps(Profile(education=[{"id": "s1", "institution": "Unilag"}]))
+
+        assert gaps[0].topic is Topic.GRADE
+        assert gaps[0].item_id == "s1"
+        assert gaps[0].subject == "Unilag"
+
+    def test_a_phone_number_is_contact_enough(self) -> None:
+        topics = [
+            gap.topic for gap in open_gaps(Profile(basics={"full_name": "Ada", "phone": "0801"}))
+        ]
+
+        assert Topic.CONTACT not in topics
+
+    def test_with_the_basics_known_it_starts_with_work_history(self) -> None:
         gap = next_gap(Profile())
 
         assert gap is not None
@@ -58,10 +89,10 @@ class TestPriority:
 
         assert topics.index(Topic.EXPERIENCE) < topics.index(Topic.PROJECTS)
 
-    def test_education_comes_after_the_work_itself(self) -> None:
+    def test_certifications_come_last(self) -> None:
         topics = [gap.topic for gap in open_gaps(Profile())]
 
-        assert topics.index(Topic.EDUCATION) > topics.index(Topic.PROJECTS)
+        assert topics[-1] is Topic.CERTIFICATIONS
 
 
 class TestWhatCountsAsFilled:
@@ -123,7 +154,7 @@ class TestNotRepeatingYourself:
                 }
             ],
             skills=[{"name": "Python"}],
-            education=[{"institution": "Unilag"}],
+            education=[{"institution": "Unilag", "grade": "Second Class Upper"}],
             certifications=[{"name": "AZ-900"}],
         )
 

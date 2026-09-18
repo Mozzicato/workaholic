@@ -4,9 +4,12 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { getApiClient } from "@/lib/api/browser";
 
-import { getProfile, updateProfile, type ProfileUpdate } from "./api";
+import { getProfile, getReadiness, updateProfile, type ProfileUpdate } from "./api";
 
-export const profileKeys = { profile: ["profile"] as const };
+export const profileKeys = {
+  profile: ["profile"] as const,
+  readiness: ["profile", "readiness"] as const,
+};
 
 export function useProfile() {
   return useQuery({
@@ -19,6 +22,16 @@ export function useUpdateProfile() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (update: ProfileUpdate) => updateProfile(getApiClient(), update),
-    onSuccess: (profile) => queryClient.setQueryData(profileKeys.profile, profile),
+    onSuccess: (profile) => {
+      queryClient.setQueryData(profileKeys.profile, profile);
+      void queryClient.invalidateQueries({ queryKey: profileKeys.readiness });
+    },
+  });
+}
+
+export function useReadiness() {
+  return useQuery({
+    queryKey: profileKeys.readiness,
+    queryFn: ({ signal }) => getReadiness(getApiClient(), signal),
   });
 }

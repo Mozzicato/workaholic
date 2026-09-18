@@ -29,8 +29,9 @@ export const skillSchema = z.object({
 export const experienceSchema = z.object({
   id: z.string().optional(),
   evidence_ids: z.array(z.string()).optional(),
-  employer: z.string().min(1).max(120),
-  title: z.string().min(1).max(120),
+  // Either may be unknown while a conversation is still filling the role in; the API needs one.
+  employer: z.string().min(1).max(120).nullish(),
+  title: z.string().min(1).max(120).nullish(),
   location: z.string().max(120).nullish(),
   is_current: z.boolean().default(false),
   start_date: month,
@@ -51,6 +52,18 @@ export const projectSchema = z.object({
   outcomes: z.array(z.string().min(1).max(500)).max(20).default([]),
 });
 
+export const educationSchema = z.object({
+  id: z.string().optional(),
+  evidence_ids: z.array(z.string()).optional(),
+  institution: z.string().min(1).max(120),
+  qualification: z.string().max(120).nullish(),
+  field_of_study: z.string().max(120).nullish(),
+  grade: z.string().max(120).nullish(),
+  location: z.string().max(120).nullish(),
+  start_date: month,
+  end_date: month,
+});
+
 export const profileSchema = z.object({
   id: z.uuid(),
   basics: basicsSchema,
@@ -61,7 +74,7 @@ export const profileSchema = z.object({
     other: z.array(z.object({ label: z.string(), url: z.string() })).default([]),
   }),
   experience: z.array(experienceSchema),
-  education: z.array(z.record(z.string(), z.unknown())),
+  education: z.array(educationSchema),
   projects: z.array(projectSchema),
   skills: z.array(skillSchema),
   achievements: z.array(z.record(z.string(), z.unknown())),
@@ -75,16 +88,33 @@ export type Basics = z.infer<typeof basicsSchema>;
 export type Skill = z.infer<typeof skillSchema>;
 export type Experience = z.infer<typeof experienceSchema>;
 export type Project = z.infer<typeof projectSchema>;
+export type Education = z.infer<typeof educationSchema>;
 
 export type ProfileUpdate = {
   basics?: Basics;
   skills?: Skill[];
   experience?: Experience[];
   projects?: Project[];
+  education?: Education[];
 };
 
 export function getProfile(api: ApiClient, signal?: AbortSignal): Promise<CandidateProfile> {
   return api.request("/api/v1/profile", { schema: profileSchema, signal });
+}
+
+export const readinessSchema = z.object({
+  resume_ready: z.boolean(),
+  cover_letter_ready: z.boolean(),
+  items: z.array(
+    z.object({ key: z.string(), label: z.string(), done: z.boolean(), hint: z.string() }),
+  ),
+});
+
+export type Readiness = z.infer<typeof readinessSchema>;
+
+/** What the record still needs before a resume can be written from it. */
+export function getReadiness(api: ApiClient, signal?: AbortSignal): Promise<Readiness> {
+  return api.request("/api/v1/profile/readiness", { schema: readinessSchema, signal });
 }
 
 export function updateProfile(api: ApiClient, body: ProfileUpdate): Promise<CandidateProfile> {

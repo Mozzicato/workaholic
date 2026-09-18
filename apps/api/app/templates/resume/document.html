@@ -85,9 +85,13 @@
             </h3>
             <span class="entry-dates">{{ date_range(entry.start_date, entry.end_date, false) }}</span>
           </div>
-          {%- if entry.qualification %}
+          {%- if entry.qualification or entry.grade %}
           <div class="entry-sub">
-            <span class="entry-org">{{ entry.institution }}</span>
+            <span class="entry-org">
+              {{- entry.institution if entry.qualification -}}
+              {%- if entry.qualification and entry.grade %} · {% endif -%}
+              {%- if entry.grade %}Grade: {{ entry.grade }}{% endif -%}
+            </span>
             {%- if entry.location %}<span class="entry-place">{{ entry.location }}</span>{% endif %}
           </div>
           {%- endif %}

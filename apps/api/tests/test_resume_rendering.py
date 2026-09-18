@@ -142,6 +142,15 @@ class TestTemplates:
 
         assert html.index("Education") < html.index("Experience")
 
+    def test_a_grade_is_printed_with_its_school(self) -> None:
+        school = DOCUMENT.education[0].model_copy(update={"grade": "4.52/5"})
+        html = render_html(
+            DOCUMENT.model_copy(update={"education": [school]}), ResumeTemplate.STANDARD
+        )
+
+        assert "Grade: 4.52/5" in html
+        assert "Grade:" not in render_html(DOCUMENT, ResumeTemplate.STANDARD)
+
     def test_the_standard_template_leads_with_experience(self) -> None:
         html = render_html(DOCUMENT, ResumeTemplate.STANDARD)
 

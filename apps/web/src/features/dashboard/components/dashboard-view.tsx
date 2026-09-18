@@ -1,5 +1,6 @@
 "use client";
 
+import { MessagesSquareIcon } from "lucide-react";
 import Link from "next/link";
 
 import { LoadFailure } from "@/components/feedback/load-failure";
@@ -7,10 +8,11 @@ import { buttonVariants } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import type { CurrentUser } from "@/features/account/api";
 import { useCurrentUser } from "@/features/account/hooks";
-import { useProfile } from "@/features/profile/hooks";
+import { useProfile, useReadiness } from "@/features/profile/hooks";
 import { CreateResumeDialog } from "@/features/resumes/components/create-resume-dialog";
 import { ResumeList } from "@/features/resumes/components/resume-list";
 import { useResumes } from "@/features/resumes/hooks";
+import { routes } from "@/lib/routes";
 import { cn } from "@/lib/utils";
 
 const PROVIDER_LABELS: Record<string, string> = {
@@ -22,6 +24,7 @@ export function DashboardView() {
   const account = useCurrentUser();
   const resumes = useResumes();
   const profile = useProfile();
+  const readiness = useReadiness();
 
   // Checked one query at a time: that is what narrows each result to its loaded shape.
   if (account.isPending) return <DashboardSkeleton />;
@@ -56,7 +59,10 @@ export function DashboardView() {
 
   const user = account.data;
   const profileItems = profile.data
-    ? profile.data.experience.length + profile.data.projects.length + profile.data.skills.length
+    ? profile.data.experience.length +
+      profile.data.projects.length +
+      profile.data.education.length +
+      profile.data.skills.length
     : 0;
 
   return (
@@ -80,6 +86,24 @@ export function DashboardView() {
         </section>
 
         <div className="space-y-6">
+          <section
+            aria-labelledby="assistant-heading"
+            className="space-y-3 rounded-xl border border-primary/30 bg-accent/40 p-5"
+          >
+            <h2 id="assistant-heading" className="font-heading text-lg">
+              {readiness.data?.resume_ready ? "Add more by talking" : "Rather talk than type?"}
+            </h2>
+            <p className="text-sm leading-relaxed text-muted-foreground">
+              {readiness.data?.resume_ready
+                ? "Tell the assistant about something new and it goes into your record."
+                : "The assistant walks you through your resume one question at a time. Speak or type your answers, or upload a CV to start from."}
+            </p>
+            <Link href={routes.assistant} className={cn(buttonVariants(), "h-9 w-full")}>
+              <MessagesSquareIcon aria-hidden="true" />
+              Talk me through it
+            </Link>
+          </section>
+
           <section aria-labelledby="profile-heading" className="space-y-4">
             <h2 id="profile-heading" className="text-sm font-medium text-muted-foreground">
               Your career record

@@ -44,9 +44,10 @@ from app.repositories.interview import InterviewRepository
 from app.services.ai.base import LLMProvider
 from app.services.ai.errors import AIError
 from app.services.candidate import CandidateProfileService
-from app.services.interview.apply import apply_facts
+from app.services.interview.apply import apply_basics, apply_facts
 from app.services.interview.extraction import ExtractedFacts, ground
 from app.services.interview.gaps import Gap, Topic, next_gap
+from app.services.resume.readiness import assess_readiness
 from app.services.resume.validation import check_text, find_instruction
 
 logger = structlog.get_logger(__name__)
@@ -68,7 +69,21 @@ _SECTION_KEYS = (
 
 # Asked when the model is unavailable, or when its question strayed into asserting things.
 _PLAIN_QUESTIONS: dict[Topic, str] = {
-    Topic.EXPERIENCE: "What is the most recent job, internship or placement you have had?",
+    Topic.NAME: "Let's start with you. What's your full name, as it should appear on your resume?",
+    Topic.CONTACT: (
+        "What email address or phone number should employers use to reach you? "
+        "Tell me the city you're in too, if you'd like it on the page."
+    ),
+    Topic.EDUCATION: "Where are you studying, or where did you study — and what course?",
+    Topic.GRADE: (
+        "What grade or CGPA do you have from {subject}? "
+        "If you'd rather leave it off your resume, just say skip."
+    ),
+    Topic.EXPERIENCE: (
+        "Have you had a job, internship or placement? If so, tell me about the most recent "
+        "one — where it was and what your role was. If not, just say no and we'll talk about "
+        "what you've built instead."
+    ),
     Topic.EXPERIENCE_DETAIL: "Thinking about {subject}: what did you actually do day to day?",
     Topic.EXPERIENCE_OUTCOME: "Thinking about {subject}: what changed because of your work?",
     Topic.TECHNOLOGIES: "Thinking about {subject}: which tools, languages or systems did you use?",
@@ -76,11 +91,13 @@ _PLAIN_QUESTIONS: dict[Topic, str] = {
     Topic.PROJECT_DETAIL: "What does {subject} do, and why did you build it?",
     Topic.PROJECT_OUTCOME: "Did anyone use {subject}, and what came of it?",
     Topic.SKILLS: "Which skills would you be comfortable being asked about in an interview?",
-    Topic.EDUCATION: "What are you studying, or what did you study, and where?",
     Topic.CERTIFICATIONS: "Do you have any certifications or licences?",
 }
 
 _EXPECTING: dict[Topic, str] = {
+    Topic.NAME: "their full name",
+    Topic.CONTACT: "an email address or phone number, and optionally the city they live in",
+    Topic.GRADE: "their grade or CGPA, exactly as stated",
     Topic.EXPERIENCE: "a job, internship or placement, with the employer and role",
     Topic.EXPERIENCE_DETAIL: "what they did in this role",
     Topic.EXPERIENCE_OUTCOME: "what changed because of their work",
@@ -89,13 +106,34 @@ _EXPECTING: dict[Topic, str] = {
     Topic.PROJECT_DETAIL: "what the project is and does",
     Topic.PROJECT_OUTCOME: "who used it and what came of it",
     Topic.SKILLS: "skills they can back up",
-    Topic.EDUCATION: "where they studied and what",
+    Topic.EDUCATION: "the school they attend or attended, the course, and the qualification",
     Topic.CERTIFICATIONS: "a certification or licence",
 }
 
+# Asked from a template every time. There is nothing for a model to phrase in "what's your name";
+# the fixed grade question says plainly that the answer is optional; and the fixed work question
+# tells someone who has never had a job that "no" is a fine answer, before they feel they must
+# invent one. It is also one model call fewer on the turns where a person is still warming up.
+_PLAIN_ONLY = frozenset(
+    {Topic.NAME, Topic.CONTACT, Topic.EDUCATION, Topic.GRADE, Topic.EXPERIENCE, Topic.PROJECTS}
+)
+
+_GREETING = (
+    "Hi! I'll walk you through your resume one question at a time — just answer the way you'd "
+    "say it out loud. You can type, or press the microphone and talk. If you already have a CV, "
+    "upload it and I'll only ask about what it's missing."
+)
+
+_AFTER_UPLOAD = "Thanks — I've added what you confirmed from your document."
+
 _CLOSING = (
-    "That's enough to work with. Your record is on the profile page — have a look, correct "
-    "anything I misheard, and you can write a resume from it whenever you like."
+    "That's everything a resume needs. Your record is on the profile page — have a look, "
+    "correct anything I misheard, and you can write a resume from it whenever you like."
+)
+
+_CLOSING_INCOMPLETE = (
+    "That's all I'll ask for now. Before a resume can be written, your record still needs: "
+    "{missing}. You can add them on your profile page, or start a new conversation with me."
 )
 
 _NOT_A_FACT = (
@@ -146,7 +184,10 @@ class InterviewService:
 
         gap = next_gap(profile)
         question = await self._compose_question(session, profile, gap, turns=[])
-        await self._add_message(session, InterviewRole.AGENT, question, gap)
+        if gap is None:
+            session.status = InterviewStatus.COMPLETED
+            session.completed_at = datetime.now(UTC)
+        await self._add_message(session, InterviewRole.AGENT, f"{_GREETING}\n\n{question}", gap)
         session.questions_asked = 1
         await self._session.commit()
         await self._session.refresh(session)
@@ -211,16 +252,29 @@ class InterviewService:
                 grounded.dropped = _only_new(grounded.dropped, profile)
                 dropped = grounded.dropped
                 if grounded.usable and not grounded.is_empty:
+                    basics = dict(profile.basics) if isinstance(profile.basics, dict) else {}
+                    about_them = apply_basics(basics, grounded)
+                    if about_them:
+                        profile.basics = basics
+                        recorded.extend(about_them)
+                        self._record_evidence(
+                            user=user,
+                            profile=profile,
+                            section=ProfileSection.BASICS,
+                            applied_item_id=None,
+                            claims=about_them,
+                            message_id=user_message.id,
+                        )
                     sections = {key: _copy_section(profile, key) for key in _SECTION_KEYS}
                     applied = apply_facts(sections, grounded, gap)
                     if applied.changed:
                         for key, value in sections.items():
                             setattr(profile, key, value)
-                        recorded = applied.notes
+                        recorded.extend(applied.notes)
                         self._record_evidence(
                             user=user,
                             profile=profile,
-                            gap=gap,
+                            section=_SECTION_FOR_TOPIC.get(gap.topic),
                             applied_item_id=applied.item_id,
                             claims=recorded,
                             message_id=user_message.id,
@@ -230,23 +284,61 @@ class InterviewService:
         await self._session.refresh(profile)
 
         asked = [message.topic for message in messages if message.topic]
+        reply, finished = await self._ask_next(
+            session, profile, asked, turns=_turns([*messages, user_message])
+        )
+        await self._session.commit()
+        await self._session.refresh(session)
+        return TurnResult(session, recorded, dropped, reply, completed=finished)
+
+    async def continue_after_upload(self, user: User, session_id: uuid.UUID) -> TurnResult:
+        """Pick up after a document was imported mid-conversation.
+
+        The upload may have answered the question on screen, and several after it. Nothing is
+        recorded here — the import already did that, with the person's confirmation — so this
+        only chooses the next question from the record as it now stands.
+        """
+        session = await self.get(user, session_id)
+        if session.status is not InterviewStatus.ACTIVE:
+            raise InterviewClosedError()
+
+        messages = await self._repository.list_messages(session.id, user.id)
+        pending = messages[-1] if messages and messages[-1].role is InterviewRole.AGENT else None
+        # The question still on screen was never answered, so it may be asked again.
+        asked = [message.topic for message in messages if message.topic and message is not pending]
+        profile = await self._profiles.get_or_create(user)
+        reply, finished = await self._ask_next(
+            session, profile, asked, turns=_turns(messages), preface=_AFTER_UPLOAD
+        )
+        await self._session.commit()
+        await self._session.refresh(session)
+        return TurnResult(session, [], [], reply, completed=finished)
+
+    async def _ask_next(
+        self,
+        session: InterviewSession,
+        profile: CandidateProfile,
+        asked: Sequence[str | None],
+        *,
+        turns: Sequence[tuple[str, str]],
+        preface: str | None = None,
+    ) -> tuple[InterviewMessage, bool]:
+        """The next question, or the closing message when there is nothing left to ask."""
         following = next_gap(profile, [topic for topic in asked if topic])
         finished = following is None or session.questions_asked >= MAX_QUESTIONS
 
         if finished:
             session.status = InterviewStatus.COMPLETED
             session.completed_at = datetime.now(UTC)
-            reply = await self._add_message(session, InterviewRole.AGENT, _CLOSING, None)
+            text = _closing(profile)
+            gap = None
         else:
-            question = await self._compose_question(
-                session, profile, following, turns=_turns([*messages, user_message])
-            )
-            reply = await self._add_message(session, InterviewRole.AGENT, question, following)
+            text = await self._compose_question(session, profile, following, turns=turns)
+            gap = following
             session.questions_asked += 1
-
-        await self._session.commit()
-        await self._session.refresh(session)
-        return TurnResult(session, recorded, dropped, reply, completed=finished)
+        if preface:
+            text = f"{preface}\n\n{text}"
+        return await self._add_message(session, InterviewRole.AGENT, text, gap), finished
 
     # ── model calls ─────────────────────────────────────────────────────────────
 
@@ -279,9 +371,9 @@ class InterviewService:
         turns: Sequence[tuple[str, str]],
     ) -> str:
         if gap is None:
-            return _CLOSING
+            return _closing(profile)
         plain = _PLAIN_QUESTIONS[gap.topic].format(subject=gap.subject)
-        if self._llm is None:
+        if self._llm is None or gap.topic in _PLAIN_ONLY:
             return plain
 
         context = AskContext(
@@ -311,7 +403,7 @@ class InterviewService:
         *,
         user: User,
         profile: CandidateProfile,
-        gap: Gap,
+        section: ProfileSection | None,
         applied_item_id: str | None,
         claims: Sequence[str],
         message_id: uuid.UUID,
@@ -321,7 +413,6 @@ class InterviewService:
         `source_reference` is the message it came from, so a claim on a resume can be traced to
         the sentence the person said.
         """
-        section = _SECTION_FOR_TOPIC.get(gap.topic)
         for claim in claims:
             self._session.add(
                 Evidence(
@@ -360,6 +451,9 @@ class InterviewService:
 
 
 _SECTION_FOR_TOPIC: dict[Topic, ProfileSection] = {
+    Topic.NAME: ProfileSection.BASICS,
+    Topic.CONTACT: ProfileSection.BASICS,
+    Topic.GRADE: ProfileSection.EDUCATION,
     Topic.EXPERIENCE: ProfileSection.EXPERIENCE,
     Topic.EXPERIENCE_DETAIL: ProfileSection.EXPERIENCE,
     Topic.EXPERIENCE_OUTCOME: ProfileSection.EXPERIENCE,
@@ -370,6 +464,14 @@ _SECTION_FOR_TOPIC: dict[Topic, ProfileSection] = {
     Topic.EDUCATION: ProfileSection.EDUCATION,
     Topic.CERTIFICATIONS: ProfileSection.CERTIFICATIONS,
 }
+
+
+def _closing(profile: CandidateProfile) -> str:
+    readiness = assess_readiness(profile)
+    if readiness.ready:
+        return _CLOSING
+    missing = ", ".join(item.label.lower() for item in readiness.missing)
+    return _CLOSING_INCOMPLETE.format(missing=missing)
 
 
 def _gap_for(profile: CandidateProfile, question: InterviewMessage | None) -> Gap | None:
@@ -441,6 +543,12 @@ def _profile_text(profile: CandidateProfile) -> list[str]:
     for item in getattr(profile, "skills", []) or []:
         if isinstance(item, dict) and isinstance(item.get("name"), str):
             texts.append(item["name"])
+    for item in getattr(profile, "education", []) or []:
+        if isinstance(item, dict):
+            texts.extend(value for value in item.values() if isinstance(value, str))
+    basics = getattr(profile, "basics", None)
+    if isinstance(basics, dict):
+        texts.extend(value for value in basics.values() if isinstance(value, str))
     return texts
 
 
