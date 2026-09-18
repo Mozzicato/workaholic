@@ -10,5 +10,6 @@ rather than editing an accepted one; mark superseded records as such.
 | [003](ADR-003-supabase-auth-verified-locally.md) | Supabase Auth, verified locally with asymmetric keys |
 | [004](ADR-004-ai-provider-abstraction-azure-foundry.md) | AI provider abstraction with Azure Foundry as the primary provider |
 | [005](ADR-005-resume-generation-facts-from-the-record.md) | The model writes wording; the record supplies the facts |
+| [006](ADR-006-the-interview-asks-what-the-record-lacks.md) | Code chooses the interview question; the model only phrases it |
 
-Planned as their phases land: the interview agent · voice capture · job tailoring and ATS checks.
+Planned as their phases land: voice capture · job tailoring and ATS checks.
