@@ -54,6 +54,10 @@ jobs:
       - name: Install dependencies
         run: uv sync --locked
 
+      - name: Install Chromium
+        # The PDF tests print with a real browser, as production does.
+        run: uv run playwright install --only-shell --with-deps chromium
+
       - name: Format
         run: uv run ruff format --check .
 

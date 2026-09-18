@@ -1,8 +1,8 @@
 import uuid
 
-from fastapi import APIRouter, status
+from fastapi import APIRouter, Response, status
 
-from app.api.deps import LLM, CurrentUser, SessionDep
+from app.api.deps import LLM, CurrentUser, Pdf, SessionDep
 from app.schemas.candidate import (
     GenerateResumeRequest,
     ResumeCreate,
@@ -12,8 +12,10 @@ from app.schemas.candidate import (
     ResumeVersionSummary,
 )
 from app.schemas.errors import AUTH_ERROR_RESPONSES, ErrorResponse
+from app.schemas.resume_document import ResumeDocument
 from app.services.candidate import CandidateProfileService, EvidenceService, ResumeService
 from app.services.resume import ResumeGenerationService
+from app.services.resume.rendering import render_html
 
 router = APIRouter(prefix="/resumes", tags=["resumes"])
 
@@ -136,3 +138,70 @@ async def read_version(
 ) -> ResumeVersionRead:
     version = await ResumeService(session).get_version(user, resume_id, version_id)
     return ResumeVersionRead.model_validate(version)
+
+
+@router.get(
+    "/{resume_id}/versions/{version_id}/preview",
+    response_class=Response,
+    responses={
+        **AUTH_ERROR_RESPONSES,
+        **NOT_FOUND,
+        200: {"content": {"text/html": {}}, "description": "The rendered resume"},
+    },
+)
+async def preview_version(
+    user: CurrentUser, session: SessionDep, resume_id: uuid.UUID, version_id: uuid.UUID
+) -> Response:
+    """The resume as HTML — the same markup the PDF is printed from."""
+    version = await ResumeService(session).get_version(user, resume_id, version_id)
+    html = render_html(ResumeDocument.model_validate(version.content), version.template)
+    return Response(
+        content=html,
+        media_type="text/html; charset=utf-8",
+        # A resume is personal: never cached by a proxy, never stored on disk by the browser.
+        headers={"Cache-Control": "no-store", "X-Content-Type-Options": "nosniff"},
+    )
+
+
+@router.get(
+    "/{resume_id}/versions/{version_id}/pdf",
+    response_class=Response,
+    responses={
+        **AUTH_ERROR_RESPONSES,
+        **NOT_FOUND,
+        200: {"content": {"application/pdf": {}}, "description": "The resume as a PDF"},
+        503: {"model": ErrorResponse, "description": "The renderer is unavailable"},
+    },
+)
+async def download_version_pdf(
+    user: CurrentUser,
+    session: SessionDep,
+    pdf: Pdf,
+    resume_id: uuid.UUID,
+    version_id: uuid.UUID,
+) -> Response:
+    """The resume as a PDF, printed from the same HTML the preview shows."""
+    service = ResumeService(session)
+    resume = await service.get(user, resume_id)
+    version = await service.get_version(user, resume_id, version_id)
+    document = ResumeDocument.model_validate(version.content)
+    content = await pdf.render(render_html(document, version.template))
+    filename = _filename(resume.title, version.version_number)
+    return Response(
+        content=content,
+        media_type="application/pdf",
+        headers={
+            "Content-Disposition": f'attachment; filename="{filename}"',
+            "Cache-Control": "no-store",
+            "X-Content-Type-Options": "nosniff",
+        },
+    )
+
+
+def _filename(title: str, version_number: int) -> str:
+    """A safe ASCII filename: a header is no place for whatever the user named their resume."""
+    safe = "".join(
+        character if character.isalnum() or character in "-_" else "-"
+        for character in title.strip().replace(" ", "-")
+    ).strip("-")
+    return f"{(safe[:60] or 'resume')}-v{version_number}.pdf"

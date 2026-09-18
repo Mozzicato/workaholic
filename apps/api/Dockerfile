@@ -14,6 +14,11 @@ COPY pyproject.toml uv.lock ./
 RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --locked --no-dev --no-install-project
 
+# Chromium prints the PDFs (PRD section 21). Baked into the image, so a starting container
+# never downloads a browser on its way up.
+ENV PLAYWRIGHT_BROWSERS_PATH=/opt/playwright
+RUN /app/.venv/bin/playwright install --only-shell chromium
+
 COPY alembic.ini ./
 COPY alembic ./alembic
 COPY app ./app
@@ -23,13 +28,43 @@ FROM python:3.12.14-slim-trixie AS runtime
 ENV PATH="/app/.venv/bin:$PATH" \
     PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
-    ENVIRONMENT=production
+    ENVIRONMENT=production \
+    PLAYWRIGHT_BROWSERS_PATH=/opt/playwright
+
+# Chromium's shared libraries, and real font faces: without fonts a PDF renders as empty boxes.
+RUN apt-get update \
+ && apt-get install --yes --no-install-recommends \
+      fonts-dejavu-core \
+      fonts-liberation2 \
+      libasound2 \
+      libatk-bridge2.0-0 \
+      libatk1.0-0 \
+      libatspi2.0-0 \
+      libcairo2 \
+      libcups2 \
+      libdbus-1-3 \
+      libdrm2 \
+      libgbm1 \
+      libglib2.0-0 \
+      libnspr4 \
+      libnss3 \
+      libpango-1.0-0 \
+      libx11-6 \
+      libxcb1 \
+      libxcomposite1 \
+      libxdamage1 \
+      libxext6 \
+      libxfixes3 \
+      libxkbcommon0 \
+      libxrandr2 \
+ && rm -rf /var/lib/apt/lists/*
 
 RUN groupadd --system --gid 10001 workaholic \
  && useradd --system --uid 10001 --gid workaholic --no-create-home --shell /usr/sbin/nologin workaholic
 
 WORKDIR /app
 COPY --from=builder --chown=root:root /app /app
+COPY --from=builder --chown=root:root /opt/playwright /opt/playwright
 
 USER workaholic
 EXPOSE 8000

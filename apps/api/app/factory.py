@@ -18,6 +18,7 @@ from app.services.ai.base import LLMProvider
 from app.services.ai.factory import build_llm_provider
 from app.services.auth.base import AuthProvider
 from app.services.auth.supabase import SupabaseAuthProvider
+from app.services.resume.pdf import PdfRenderer
 
 logger = structlog.get_logger(__name__)
 
@@ -42,6 +43,8 @@ def create_app(
         )
         app.state.auth_provider = auth_provider or SupabaseAuthProvider(settings)
         app.state.llm = llm_provider or build_llm_provider(settings)
+        # The browser starts on the first PDF, not at boot: most requests never need one.
+        app.state.pdf_renderer = PdfRenderer()
         logger.info(
             "api_started",
             environment=settings.environment,
@@ -51,6 +54,7 @@ def create_app(
         try:
             yield
         finally:
+            await app.state.pdf_renderer.stop()
             if app.state.llm is not None:
                 await app.state.llm.aclose()
             await app.state.auth_provider.aclose()

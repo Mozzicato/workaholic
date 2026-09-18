@@ -9,6 +9,6 @@ rather than editing an accepted one; mark superseded records as such.
 | [002](ADR-002-postgresql-source-of-truth-redis-ephemeral.md) | PostgreSQL is the source of truth; Redis is disposable |
 | [003](ADR-003-supabase-auth-verified-locally.md) | Supabase Auth, verified locally with asymmetric keys |
 | [004](ADR-004-ai-provider-abstraction-azure-foundry.md) | AI provider abstraction with Azure Foundry as the primary provider |
+| [005](ADR-005-resume-generation-facts-from-the-record.md) | The model writes wording; the record supplies the facts |
 
-Planned as their phases land: Structured Resume JSON · HTML/CSS + Playwright PDF rendering ·
-Evidence-based AI generation.
+Planned as their phases land: the interview agent · voice capture · job tailoring and ATS checks.

@@ -14,7 +14,12 @@ from app.schemas.resume_document import (
     ResumeProject,
     ResumeSkillGroup,
 )
-from app.services.resume.rendering import format_month, format_range, render_html
+from app.services.resume.rendering import (
+    _EN_DASH,
+    format_month,
+    format_range,
+    render_html,
+)
 
 DOCUMENT = ResumeDocument(
     basics=ResumeBasics(
@@ -102,7 +107,7 @@ class TestContent:
             assert expected in html
 
     def test_a_current_role_reads_as_present(self) -> None:
-        assert "March 2024 – Present" in render_html(DOCUMENT, ResumeTemplate.STANDARD)
+        assert f"March 2024 {_EN_DASH} Present" in render_html(DOCUMENT, ResumeTemplate.STANDARD)
 
     def test_user_text_cannot_inject_markup(self) -> None:
         document = DOCUMENT.model_copy(update={"summary": "<script>alert(1)</script> & co"})
@@ -148,7 +153,18 @@ class TestTemplates:
 
         assert standard != compact
         for fact in ("Ada Lovelace", "Paystack", "University of Lagos", "AZ-900"):
-            assert fact in standard and fact in compact
+            assert fact in standard
+            assert fact in compact
+
+    def test_the_stylesheet_survives_escaping_intact(self) -> None:
+        """Escaping the CSS silently breaks every rule containing a quote — fonts, separators."""
+        html = render_html(DOCUMENT, ResumeTemplate.STANDARD)
+        style = html.split("<style>")[1].split("</style>")[0]
+
+        assert "&quot;" not in style
+        assert "&#34;" not in style
+        assert 'content: " · "' in style  # the separator between contact details
+        assert '"Georgia"' in style  # a quoted font family reached the page unmangled
 
     def test_the_stylesheet_is_inlined_so_the_page_stands_alone(self) -> None:
         html = render_html(DOCUMENT, ResumeTemplate.STANDARD)
@@ -188,4 +204,4 @@ class TestDates:
         assert format_range(None, None, False) == ""
 
     def test_a_current_role_has_no_end_date(self) -> None:
-        assert format_range("2024-03", None, True) == "March 2024 – Present"
+        assert format_range("2024-03", None, True) == f"March 2024 {_EN_DASH} Present"

@@ -9,12 +9,15 @@ import functools
 from pathlib import Path
 
 from jinja2 import Environment, FileSystemLoader, StrictUndefined, select_autoescape
+from markupsafe import Markup
 
 from app.models.candidate import ResumeTemplate
 from app.schemas.resume_document import ResumeDocument
 
 _TEMPLATE_DIR = Path(__file__).resolve().parents[2] / "templates" / "resume"
 _STYLE_DIR = _TEMPLATE_DIR / "styles"
+
+_EN_DASH = "–"  # noqa: RUF001 - a date range takes an en dash, not a hyphen
 
 _MONTH_NAMES = (
     "January",
@@ -44,7 +47,9 @@ def render_html(document: ResumeDocument, template: ResumeTemplate) -> str:
     jinja_template = _environment().get_template("document.html")
     html = jinja_template.render(
         document=document,
-        css=_stylesheet(template),
+        # Our own stylesheet, so it goes in as markup. Everything else on the page is
+        # user text and stays escaped — quotes in CSS would otherwise break every rule.
+        css=Markup(_stylesheet(template)),  # noqa: S704 - a repository file, never user input
         section_order=_SECTION_ORDER[template],
         date_range=format_range,
         month=format_month,
@@ -66,11 +71,11 @@ def format_month(value: str | None) -> str:
 
 
 def format_range(start: str | None, end: str | None, is_current: bool) -> str:
-    """ "March 2024 – Present", or whichever end of it the record actually holds."""
+    """The date range as a resume prints it, or whichever end of it the record holds."""
     first = format_month(start)
     last = "Present" if is_current else format_month(end)
     if first and last:
-        return f"{first} – {last}"
+        return f"{first} {_EN_DASH} {last}"
     return first or last
 
 

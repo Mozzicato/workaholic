@@ -10,6 +10,7 @@ from app.models.user import User
 from app.services.ai.base import LLMProvider
 from app.services.ai.errors import AINotConfiguredError
 from app.services.auth.base import AuthProvider
+from app.services.resume.pdf import PdfRenderer
 from app.services.users import UserService
 
 _bearer = HTTPBearer(auto_error=False, description="Supabase access token")
@@ -33,6 +34,11 @@ def get_llm(request: Request) -> LLMProvider:
     return provider
 
 
+def get_pdf_renderer(request: Request) -> PdfRenderer:
+    renderer: PdfRenderer = request.app.state.pdf_renderer
+    return renderer
+
+
 async def get_current_user(
     session: Annotated[AsyncSession, Depends(get_session)],
     auth_provider: Annotated[AuthProvider, Depends(get_auth_provider)],
@@ -51,3 +57,4 @@ async def get_current_user(
 SessionDep = Annotated[AsyncSession, Depends(get_session)]
 CurrentUser = Annotated[User, Depends(get_current_user)]
 LLM = Annotated[LLMProvider, Depends(get_llm)]
+Pdf = Annotated[PdfRenderer, Depends(get_pdf_renderer)]
