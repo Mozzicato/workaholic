@@ -25,7 +25,7 @@ class Profile:
             setattr(self, name, sections.get(name, []))
 
 
-NOBODY_YET = {"basics": {}, "education": []}
+NOBODY_YET: dict[str, Any] = {"basics": {}, "education": []}
 
 
 ROLE = {
