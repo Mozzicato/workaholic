@@ -50,3 +50,10 @@ fill in forms had no obvious way in, and it never asked for a name, an email or 
   they are missing. That is the right order for a resume either way.
 - No new Azure resource and no new cost: speech output is the browser's, and the only new model
   work is a few extra fields on an extraction call that was already being made.
+- Bugs found by running the assistant against production and the live model, not by the tests
+  written first: an interview stored a certification's date under a field the profile schema does
+  not have, so that profile could no longer be read at all (present since the interview was
+  first built, hidden because certifications were asked last); the model once recorded the answer
+  "no certifications yet" as a certification of that name, which grounding passed because every
+  word was said; and a certification's year was often left out. All three have regression tests,
+  and a name that is a refusal is now dropped in code, not just discouraged in the prompt.
