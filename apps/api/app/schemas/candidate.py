@@ -122,9 +122,22 @@ class AchievementItem(DatedItem):
 
 
 class CertificationItem(DatedItem):
+    """`start_date` is when it was issued."""
+
     name: ShortText
     issuer: ShortText | None = None
     credential_url: HttpUrl | None = None
+
+    @model_validator(mode="before")
+    @classmethod
+    def _repair_issued_date(cls, data: Any) -> Any:
+        # Interviews before 2026-09-19 stored the date as `issued_date`, which this schema does not
+        # have, so reading such a profile failed outright. Read it as what it always meant.
+        if isinstance(data, dict) and "issued_date" in data:
+            data = dict(data)
+            issued = data.pop("issued_date")
+            data.setdefault("start_date", issued)
+        return data
 
 
 class LanguageItem(ProfileItem):

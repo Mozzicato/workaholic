@@ -431,7 +431,8 @@ def _certifications(
                 item_id=item_id,
                 name=name,
                 issuer=text_of(item.get("issuer")),
-                issued_date=text_of(item.get("issued_date")),
+                # Issued on `start_date`; `issued_date` only on rows written before that was fixed.
+                issued_date=text_of(item.get("start_date")) or text_of(item.get("issued_date")),
             )
         )
     return entries

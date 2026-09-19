@@ -331,3 +331,13 @@ class TestItemIdentityIsStable:
         after = (await client.get(PROFILE, headers=headers)).json()
 
         assert before["experience"][0]["id"] == after["experience"][0]["id"]
+
+
+def test_a_certification_saved_with_the_old_date_field_still_reads() -> None:
+    """Interviews once stored `issued_date`; a profile holding one must not become unreadable."""
+    from app.schemas.candidate import CertificationItem
+
+    stored = {"id": "c1", "name": "AZ-900", "issued_date": "2025-04"}
+    item = CertificationItem.model_validate(stored)
+
+    assert item.start_date == "2025-04"

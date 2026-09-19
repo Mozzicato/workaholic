@@ -617,3 +617,45 @@ class TestContinuingAfterAnUpload:
             response = await client.post(f"{INTERVIEWS}/{interview_id}/continue", headers=intruder)
 
         assert response.status_code == 404
+
+
+@pytest.mark.usefixtures("db_engine")
+class TestCertifications:
+    """Found in production: a certification from an interview made the whole profile unreadable."""
+
+    async def test_a_certification_from_an_answer_leaves_the_profile_readable(
+        self, make_app: AppFactory, idp: FakeIdentityProvider
+    ) -> None:
+        llm = Scripted(facts(certification_name="AZ-900", start_date="2025"))
+        async with running(app_with(llm, make_app)) as client:
+            headers = await sign_in(client, idp)
+            await client.patch(
+                "/api/v1/profile",
+                headers=headers,
+                json={
+                    "experience": [
+                        {
+                            "employer": "Lumen Freight",
+                            "title": "Intern",
+                            "bullets": ["cut import failures to zero"],
+                            "technologies": ["Python"],
+                        }
+                    ],
+                    "projects": [
+                        {
+                            "name": "Bus tracker",
+                            "description": "shows the shuttle",
+                            "outcomes": ["40 students used it"],
+                            "technologies": ["TypeScript"],
+                        }
+                    ],
+                    "skills": [{"name": "Python"}],
+                },
+            )
+            started = await start(client, headers)
+            turn = await answer(client, headers, started["session"]["id"], "AZ-900, in 2025")
+            profile = await client.get("/api/v1/profile", headers=headers)
+
+        assert turn.json()["recorded"] == ["AZ-900"]
+        assert profile.status_code == 200
+        assert profile.json()["certifications"][0]["start_date"] == "2025"

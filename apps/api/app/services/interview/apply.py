@@ -173,7 +173,7 @@ def apply_facts(
         entry = {
             "id": str(uuid.uuid4()),
             "name": facts.certification_name,
-            "issued_date": facts.start_date or None,
+            "start_date": facts.start_date or None,
         }
         certifications.append(entry)
         applied.item_id = entry["id"]
