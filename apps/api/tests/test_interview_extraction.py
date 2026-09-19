@@ -218,3 +218,30 @@ class TestAboutThem:
     def test_contact_details_alone_are_something(self) -> None:
         kept = ground(extraction(email="ada@lovelace.dev"), "ada@lovelace.dev")
         assert not kept.is_empty
+
+
+class TestSayingNo:
+    """Found against the live model: "no certifications yet" was once stored as a certification.
+
+    Every word of it was said, so grounding alone let it through.
+    """
+
+    @pytest.mark.parametrize(
+        "said", ["no certifications yet", "None", "not yet", "N/A", "I don't have one"]
+    )
+    def test_declining_is_never_recorded_as_a_name(self, said: str) -> None:
+        kept = ground(extraction(certification_name=said), said)
+
+        assert kept.certification_name == ""
+        assert kept.is_empty
+
+    def test_a_declined_skill_is_not_a_skill(self) -> None:
+        kept = ground(extraction(skills=["no skills yet"]), "no skills yet")
+
+        assert kept.skills == []
+
+    @pytest.mark.parametrize("name", ["Nokia", "Nothing Phone", "Notion", "Nil Studio"])
+    def test_real_names_that_start_the_same_way_are_kept(self, name: str) -> None:
+        kept = ground(extraction(employer=name), f"I interned at {name}")
+
+        assert kept.employer == name

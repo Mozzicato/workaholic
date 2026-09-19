@@ -21,6 +21,14 @@ _WORD = re.compile(r"[A-Za-z][A-Za-z0-9'.+#-]*")
 _JOINING_WORDS = frozenset(
     {"a", "an", "and", "at", "by", "for", "in", "of", "on", "or", "the", "to", "with"}
 )
+# A whole answer that is a refusal ("none", "n/a"), or a name that opens by declining ("no
+# certifications yet", "haven't got one"). "Nothing Phone" and "Nil Studio" are real names, so those
+# words count only on their own.
+_REFUSAL = re.compile(
+    r"(none|nothing|nope|n/?a|nil|no|not yet|never)[.!]?$"
+    r"|(no|not|never|haven'?t|have not|don'?t|do not|i don'?t|i haven'?t)\s",
+    re.I,
+)
 _EMAIL = re.compile(r"[a-z0-9._%+-]+@[a-z0-9-]+(\.[a-z0-9-]+)+")
 _SPOKEN_AT = re.compile(r"\s+at\s+")
 _SPOKEN_DOT = re.compile(r"\s+dot\s+")
@@ -140,7 +148,7 @@ def ground(facts: ExtractedFacts, answer: str) -> GroundedFacts:
         value = getattr(facts, name).strip()
         if not value:
             continue
-        if _named_in(value, answer):
+        if _named_in(value, answer) and not _is_refusal(value):
             setattr(grounded, name, value)
         else:
             grounded.dropped.append(value)
@@ -162,7 +170,11 @@ def ground(facts: ExtractedFacts, answer: str) -> GroundedFacts:
             text = value.strip()
             if not text:
                 continue
-            supported = _named_in(text, answer) if is_name_list else _supported(text, answer)
+            supported = (
+                _named_in(text, answer) and not _is_refusal(text)
+                if is_name_list
+                else _supported(text, answer)
+            )
             if supported:
                 kept.append(text)
             else:
@@ -178,6 +190,15 @@ def ground(facts: ExtractedFacts, answer: str) -> GroundedFacts:
     if grounded.is_current:
         grounded.end_date = ""
     return grounded
+
+
+def _is_refusal(value: str) -> bool:
+    """ "no certifications yet" was said, so every word of it is grounded — and it is not a name.
+
+    Found against the live model, which once recorded it as a certification. A name that opens by
+    saying there is nothing is a person declining, and it must never reach a resume.
+    """
+    return bool(_REFUSAL.match(value.strip()))
 
 
 def _supported(value: str, answer: str) -> bool:

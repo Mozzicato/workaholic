@@ -107,7 +107,10 @@ _EXPECTING: dict[Topic, str] = {
     Topic.PROJECT_OUTCOME: "who used it and what came of it",
     Topic.SKILLS: "skills they can back up",
     Topic.EDUCATION: "the school they attend or attended, the course, and the qualification",
-    Topic.CERTIFICATIONS: "a certification or licence",
+    Topic.CERTIFICATIONS: (
+        "the name of a certification or licence in certification_name, and when it was issued "
+        "in start_date; if they say they have none, nothing is usable"
+    ),
 }
 
 # Asked from a template every time. There is nothing for a model to phrase in "what's your name";

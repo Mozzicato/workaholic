@@ -170,14 +170,15 @@ def apply_facts(
 
     if facts.certification_name:
         certifications = sections.setdefault("certifications", [])
+        name = _title_if_flat(facts.certification_name)
         entry = {
             "id": str(uuid.uuid4()),
-            "name": facts.certification_name,
+            "name": name,
             "start_date": facts.start_date or None,
         }
         certifications.append(entry)
         applied.item_id = entry["id"]
-        applied.note(facts.certification_name)
+        applied.note(name)
         return applied
 
     # Nothing structured, but the answer said something: keep their sentence against the subject.
