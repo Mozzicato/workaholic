@@ -174,6 +174,7 @@ class ResumeService:
             title=payload.title,
             target_role=payload.target_role,
             document_type=payload.document_type,
+            template=payload.template,
         )
         self._resumes.add(resume)
         try:
@@ -193,6 +194,9 @@ class ResumeService:
     async def update(self, user: User, resume_id: uuid.UUID, payload: ResumeUpdate) -> Resume:
         resume = await self.get(user, resume_id)
         for field, value in payload.model_dump(exclude_unset=True).items():
+            # A title and a template can be changed but not removed; a target role can be.
+            if value is None and field in ("title", "template"):
+                continue
             setattr(resume, field, value)
         try:
             await self._session.commit()

@@ -70,6 +70,7 @@ function withApi() {
         title: "Backend resume",
         target_role: null,
         document_type: "resume",
+        template: "classic",
         status: "draft",
         current_version_id: null,
         created_at: "2026-09-18T10:00:00Z",

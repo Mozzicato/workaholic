@@ -2,11 +2,28 @@ import { z } from "zod";
 
 import type { ApiClient } from "@/lib/api/client";
 
+/** Mirrors ResumeTemplate in apps/api/app/models/candidate.py. */
+export const resumeTemplateSchema = z.enum([
+  "standard",
+  "compact",
+  "academic",
+  "classic",
+  "harvard",
+  "engineering",
+  "modern",
+  "bold",
+  "sidebar",
+  "executive",
+  "minimal",
+]);
+export type ResumeTemplate = z.infer<typeof resumeTemplateSchema>;
+
 export const resumeSchema = z.object({
   id: z.uuid(),
   title: z.string(),
   target_role: z.string().nullable(),
   document_type: z.enum(["resume", "cv", "cover_letter"]),
+  template: resumeTemplateSchema,
   status: z.enum(["draft", "generating", "ready", "failed"]),
   current_version_id: z.uuid().nullable(),
   created_at: z.iso.datetime({ offset: true }),
@@ -29,7 +46,12 @@ export type DocumentType = Resume["document_type"];
 
 export function createResume(
   api: ApiClient,
-  body: { title: string; target_role?: string | null; document_type?: DocumentType },
+  body: {
+    title: string;
+    target_role?: string | null;
+    document_type?: DocumentType;
+    template?: ResumeTemplate;
+  },
 ): Promise<Resume> {
   return api.request("/api/v1/resumes", {
     method: "POST",
@@ -41,7 +63,7 @@ export function createResume(
 export function updateResume(
   api: ApiClient,
   id: string,
-  body: { title?: string; target_role?: string | null },
+  body: { title?: string; target_role?: string | null; template?: ResumeTemplate },
 ): Promise<Resume> {
   return api.request(`/api/v1/resumes/${id}`, {
     method: "PATCH",
@@ -56,9 +78,6 @@ export function deleteResume(api: ApiClient, id: string): Promise<null> {
     schema: z.null(),
   });
 }
-
-export const resumeTemplateSchema = z.enum(["standard", "compact", "academic"]);
-export type ResumeTemplate = z.infer<typeof resumeTemplateSchema>;
 
 export const versionSummarySchema = z.object({
   id: z.uuid(),
@@ -104,34 +123,43 @@ export type LetterBrief = {
   job_advert?: string | null;
 };
 
+/** Writes a draft in the resume's own template. */
 export function generateVersion(
   api: ApiClient,
   resumeId: string,
-  template: ResumeTemplate,
   brief?: LetterBrief,
 ): Promise<ResumeVersion> {
   return api.request(`/api/v1/resumes/${resumeId}/versions`, {
     method: "POST",
-    body: brief ? { template, brief } : { template },
+    body: brief ? { brief } : {},
     schema: versionSchema,
   });
 }
 
-export function previewUrl(resumeId: string, versionId: string): string {
-  return `/api/v1/resumes/${resumeId}/versions/${versionId}/preview`;
+/**
+ * A template only changes how a version looks, so any version can be shown in any of them.
+ * The API renders it on request; nothing is rewritten.
+ */
+function withTemplate(path: string, template?: ResumeTemplate): string {
+  return template ? `${path}?template=${template}` : path;
 }
 
-export function pdfUrl(resumeId: string, versionId: string): string {
-  return `/api/v1/resumes/${resumeId}/versions/${versionId}/pdf`;
+export function previewUrl(resumeId: string, versionId: string, template?: ResumeTemplate): string {
+  return withTemplate(`/api/v1/resumes/${resumeId}/versions/${versionId}/preview`, template);
+}
+
+export function pdfUrl(resumeId: string, versionId: string, template?: ResumeTemplate): string {
+  return withTemplate(`/api/v1/resumes/${resumeId}/versions/${versionId}/pdf`, template);
 }
 
 export async function fetchPreviewHtml(
   api: ApiClient,
   resumeId: string,
   versionId: string,
+  template?: ResumeTemplate,
   signal?: AbortSignal,
 ): Promise<string> {
-  const response = await api.raw(previewUrl(resumeId, versionId), { signal });
+  const response = await api.raw(previewUrl(resumeId, versionId, template), { signal });
   return response.text();
 }
 
@@ -140,8 +168,9 @@ export async function fetchPdf(
   api: ApiClient,
   resumeId: string,
   versionId: string,
+  template?: ResumeTemplate,
 ): Promise<{ blob: Blob; filename: string }> {
-  const response = await api.raw(pdfUrl(resumeId, versionId));
+  const response = await api.raw(pdfUrl(resumeId, versionId, template));
   const disposition = response.headers.get("Content-Disposition") ?? "";
   const match = /filename="([^"]+)"/.exec(disposition);
   return { blob: await response.blob(), filename: match?.[1] ?? "resume.pdf" };
@@ -198,9 +227,14 @@ export function getAtsReport(
   resumeId: string,
   versionId: string,
   jobId: string | null,
+  template?: ResumeTemplate,
   signal?: AbortSignal,
 ): Promise<AtsReport> {
-  const query = jobId ? `?job_id=${encodeURIComponent(jobId)}` : "";
+  // Checked in the template being looked at: layout is exactly what an ATS can trip over.
+  const params = new URLSearchParams();
+  if (jobId) params.set("job_id", jobId);
+  if (template) params.set("template", template);
+  const query = params.size > 0 ? `?${params.toString()}` : "";
   return api.request(`/api/v1/resumes/${resumeId}/versions/${versionId}/ats${query}`, {
     schema: atsReportSchema,
     signal,

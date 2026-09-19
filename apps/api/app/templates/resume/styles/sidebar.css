@@ -1,0 +1,74 @@
+/* Sidebar: two columns. The work leads; school, skills and certificates sit beside it. */
+
+body {
+  font-family: "Lato", "Helvetica Neue", Arial, sans-serif;
+  font-size: 10pt;
+  line-height: 1.4;
+  color: #1f2937;
+}
+
+.header {
+  border-bottom: 2pt solid #1e3a5f;
+  padding-bottom: 8pt;
+  margin-bottom: 12pt;
+}
+
+.name {
+  font-size: 24pt;
+  color: #1e3a5f;
+}
+
+.headline {
+  color: #475569;
+}
+
+.contact-item + .contact-item::before {
+  content: "";
+}
+
+.contact-item {
+  display: inline-block;
+  margin-right: 10pt;
+}
+
+.icon {
+  color: #1e3a5f;
+}
+
+a {
+  border-bottom: none;
+}
+
+.section-title {
+  font-size: 9.5pt;
+  letter-spacing: 1pt;
+  color: #1e3a5f;
+  border-bottom: 1pt solid #cbd5e1;
+}
+
+.side {
+  background: #f1f5f9;
+  padding: 9pt 9pt 3pt;
+  border-radius: 3pt;
+}
+
+.side .entry-head {
+  display: block;
+}
+
+.side .entry-dates {
+  display: block;
+  font-size: 9pt;
+}
+
+.side .entry-title {
+  font-size: 10pt;
+}
+
+.side .certification .entry-dates::before {
+  content: "";
+}
+
+.side .skill-group {
+  font-size: 9.5pt;
+}

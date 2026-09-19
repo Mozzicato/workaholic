@@ -1,7 +1,7 @@
 "use client";
 
 import { zodResolver } from "@hookform/resolvers/zod";
-import { PlusIcon } from "lucide-react";
+import { ArrowLeftIcon, PlusIcon } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { useForm } from "react-hook-form";
@@ -21,10 +21,13 @@ import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel } from "@/c
 import { Input } from "@/components/ui/input";
 import { Spinner } from "@/components/ui/spinner";
 import { FormErrorAlert } from "@/features/auth/components/form-alert";
-import type { DocumentType } from "@/features/resumes/api";
+import type { DocumentType, ResumeTemplate } from "@/features/resumes/api";
 import { useCreateResume } from "@/features/resumes/hooks";
+import { templateInfo } from "@/features/resumes/templates";
 import { ApiError, errorMessage } from "@/lib/api/errors";
 import { cn } from "@/lib/utils";
+
+import { TemplateGallery } from "./template-gallery";
 
 const schema = z.object({
   title: z
@@ -42,9 +45,15 @@ const KINDS = [
 
 type Values = z.infer<typeof schema>;
 
+/**
+ * Starting a resume begins with how it will look — the choice people expect to make first — then
+ * asks for a name. A cover letter has one layout, so it goes straight to the details.
+ */
 export function CreateResumeDialog({ variant = "default" }: { variant?: "default" | "outline" }) {
   const [open, setOpen] = useState(false);
   const [kind, setKind] = useState<DocumentType>("resume");
+  const [step, setStep] = useState<"look" | "details">("look");
+  const [template, setTemplate] = useState<ResumeTemplate>("classic");
   const [formError, setFormError] = useState<string | null>(null);
   const router = useRouter();
   const createResume = useCreateResume();
@@ -58,6 +67,8 @@ export function CreateResumeDialog({ variant = "default" }: { variant?: "default
     defaultValues: { title: "", target_role: "" },
   });
 
+  const choosingLook = kind === "resume" && step === "look";
+
   async function onSubmit(values: Values) {
     setFormError(null);
     try {
@@ -65,6 +76,7 @@ export function CreateResumeDialog({ variant = "default" }: { variant?: "default
         title: values.title,
         target_role: values.target_role || null,
         document_type: kind,
+        ...(kind === "resume" ? { template } : {}),
       });
       setOpen(false);
       reset();
@@ -84,7 +96,10 @@ export function CreateResumeDialog({ variant = "default" }: { variant?: "default
       open={open}
       onOpenChange={(next) => {
         setOpen(next);
-        if (!next) setFormError(null);
+        if (!next) {
+          setFormError(null);
+          setStep("look");
+        }
       }}
     >
       <DialogTrigger
@@ -95,83 +110,118 @@ export function CreateResumeDialog({ variant = "default" }: { variant?: "default
           </Button>
         }
       />
-      <DialogContent className="sm:max-w-md">
+      <DialogContent
+        className={cn(
+          "max-h-[92dvh] overflow-y-auto",
+          choosingLook ? "sm:max-w-4xl" : "sm:max-w-md",
+        )}
+      >
         <DialogHeader>
-          <DialogTitle className="font-heading text-2xl">Start something new</DialogTitle>
+          <DialogTitle className="font-heading text-2xl">
+            {choosingLook ? "Choose a template" : "Start something new"}
+          </DialogTitle>
           <DialogDescription>
-            Name it for yourself, and say which role it&apos;s for. Workaholic builds the content
-            from what you tell it — nothing is invented.
+            {choosingLook
+              ? "Pick the look you like. You can change it any time — your words stay the same."
+              : "Name it for yourself, and say which role it's for. Workaholic builds the content from what you tell it — nothing is invented."}
           </DialogDescription>
         </DialogHeader>
 
-        <form onSubmit={handleSubmit(onSubmit)} noValidate>
-          <FieldGroup>
-            <FormErrorAlert message={formError} />
+        <fieldset>
+          <legend className="text-sm font-medium">What are you making?</legend>
+          <div className="mt-2 grid gap-2 sm:grid-cols-2">
+            {KINDS.map((option) => (
+              <button
+                key={option.value}
+                type="button"
+                aria-pressed={kind === option.value}
+                onClick={() => setKind(option.value)}
+                className={cn(
+                  "rounded-lg border px-3 py-2.5 text-left transition-colors outline-none",
+                  "focus-visible:ring-3 focus-visible:ring-ring/50",
+                  kind === option.value ? "border-primary bg-accent" : "hover:bg-muted/60",
+                )}
+              >
+                <span className="block text-sm font-medium">{option.label}</span>
+                <span className="block text-xs text-muted-foreground">{option.description}</span>
+              </button>
+            ))}
+          </div>
+        </fieldset>
 
-            <fieldset>
-              <legend className="text-sm font-medium">What are you making?</legend>
-              <div className="mt-2 grid gap-2 sm:grid-cols-2">
-                {KINDS.map((option) => (
-                  <button
-                    key={option.value}
-                    type="button"
-                    aria-pressed={kind === option.value}
-                    onClick={() => setKind(option.value)}
-                    className={cn(
-                      "rounded-lg border px-3 py-2.5 text-left transition-colors outline-none",
-                      "focus-visible:ring-3 focus-visible:ring-ring/50",
-                      kind === option.value ? "border-primary bg-accent" : "hover:bg-muted/60",
-                    )}
-                  >
-                    <span className="block text-sm font-medium">{option.label}</span>
-                    <span className="block text-xs text-muted-foreground">
-                      {option.description}
-                    </span>
-                  </button>
-                ))}
-              </div>
-            </fieldset>
-
-            <Field data-invalid={Boolean(errors.title)}>
-              <FieldLabel htmlFor="title">Name</FieldLabel>
-              <Input
-                id="title"
-                className="h-10"
-                placeholder={kind === "resume" ? "Software engineering resume" : "Northwind letter"}
-                aria-invalid={Boolean(errors.title)}
-                {...register("title")}
-              />
-              <FieldError errors={[errors.title]} />
-            </Field>
-
-            <Field data-invalid={Boolean(errors.target_role)}>
-              <FieldLabel htmlFor="target_role">Target role (optional)</FieldLabel>
-              <Input
-                id="target_role"
-                className="h-10"
-                placeholder="Junior Backend Engineer"
-                aria-invalid={Boolean(errors.target_role)}
-                {...register("target_role")}
-              />
-              {errors.target_role ? (
-                <FieldError errors={[errors.target_role]} />
-              ) : (
-                <FieldDescription>
-                  {kind === "resume"
-                    ? "Used later to tailor and check the resume."
-                    : "The role the letter is for."}
-                </FieldDescription>
-              )}
-            </Field>
-
+        {choosingLook ? (
+          <>
+            <TemplateGallery value={template} onChange={setTemplate} />
             <DialogFooter showCloseButton>
-              <Button type="submit" size="lg" className="h-10" disabled={isSubmitting}>
-                {isSubmitting ? <Spinner /> : null}
-                {isSubmitting ? "Creating…" : kind === "resume" ? "Create resume" : "Create letter"}
+              <Button size="lg" className="h-10" onClick={() => setStep("details")}>
+                Continue with {templateInfo(template).name}
               </Button>
             </DialogFooter>
-          </FieldGroup>
-        </form>
+          </>
+        ) : (
+          <form onSubmit={handleSubmit(onSubmit)} noValidate>
+            <FieldGroup>
+              <FormErrorAlert message={formError} />
+
+              {kind === "resume" ? (
+                <div className="flex items-center justify-between gap-3 rounded-lg bg-muted/60 px-3 py-2 text-sm">
+                  <span>
+                    Template: <span className="font-medium">{templateInfo(template).name}</span>
+                  </span>
+                  <Button type="button" variant="ghost" size="sm" onClick={() => setStep("look")}>
+                    <ArrowLeftIcon aria-hidden="true" />
+                    Change
+                  </Button>
+                </div>
+              ) : null}
+
+              <Field data-invalid={Boolean(errors.title)}>
+                <FieldLabel htmlFor="title">Name</FieldLabel>
+                <Input
+                  id="title"
+                  className="h-10"
+                  placeholder={
+                    kind === "resume" ? "Software engineering resume" : "Northwind letter"
+                  }
+                  aria-invalid={Boolean(errors.title)}
+                  {...register("title")}
+                />
+                <FieldError errors={[errors.title]} />
+              </Field>
+
+              <Field data-invalid={Boolean(errors.target_role)}>
+                <FieldLabel htmlFor="target_role">Target role (optional)</FieldLabel>
+                <Input
+                  id="target_role"
+                  className="h-10"
+                  placeholder="Junior Backend Engineer"
+                  aria-invalid={Boolean(errors.target_role)}
+                  {...register("target_role")}
+                />
+                {errors.target_role ? (
+                  <FieldError errors={[errors.target_role]} />
+                ) : (
+                  <FieldDescription>
+                    {kind === "resume"
+                      ? "Used later to tailor and check the resume."
+                      : "The role the letter is for."}
+                  </FieldDescription>
+                )}
+              </Field>
+
+              <DialogFooter showCloseButton>
+                <Button type="submit" size="lg" className="h-10" disabled={isSubmitting}>
+                  {isSubmitting ? <Spinner /> : null}
+                  {isSubmitting
+                    ? "Creating…"
+                    : kind === "resume"
+                      ? "Create resume"
+                      : "Create letter"}
+                </Button>
+              </DialogFooter>
+            </FieldGroup>
+          </form>
+        )}
       </DialogContent>
     </Dialog>
   );

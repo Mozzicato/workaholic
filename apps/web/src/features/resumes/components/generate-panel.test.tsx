@@ -71,6 +71,7 @@ function renderPanel(hasVersions = false, documentType: "resume" | "cover_letter
     <GeneratePanel
       resumeId={VERSION.resume_id}
       documentType={documentType}
+      template="classic"
       targetRole="Junior Backend Engineer"
       hasVersions={hasVersions}
       onGenerated={onGenerated}
@@ -95,30 +96,30 @@ describe("GeneratePanel", () => {
     await vi.waitFor(() => expect(onGenerated).toHaveBeenCalledWith(VERSION.id));
     expect(request).toHaveBeenCalledWith(
       `/api/v1/resumes/${VERSION.resume_id}/versions`,
-      expect.objectContaining({ method: "POST", body: { template: "standard" } }),
+      // No template: the API writes in the resume's own.
+      expect.objectContaining({ method: "POST", body: {} }),
     );
   });
 
-  it("sends the template the user picked", async () => {
-    writing({ ...VERSION, template: "academic" });
-    const { user } = renderPanel();
+  it("shows the resume's template, with a way to change it", async () => {
+    renderPanel();
 
-    await user.click(screen.getByRole("button", { name: /Academic/ }));
-    await user.click(screen.getByRole("button", { name: "Write my resume" }));
-
-    await vi.waitFor(() => expect(writes()).toHaveLength(1));
-    expect(writes()[0][1].body).toEqual({ template: "academic" });
+    expect(await screen.findByText("Classic")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Change" })).toBeInTheDocument();
   });
 
-  it("marks the chosen template for assistive technology", async () => {
+  it("changes the template for the whole resume", async () => {
     const { user } = renderPanel();
 
-    await user.click(screen.getByRole("button", { name: /Compact/ }));
+    await user.click(await screen.findByRole("button", { name: "Change" }));
+    await user.click(screen.getByRole("radio", { name: /Engineering/ }));
+    await user.click(screen.getByRole("button", { name: "Use Engineering" }));
 
-    expect(screen.getByRole("button", { name: /Compact/ })).toHaveAttribute("aria-pressed", "true");
-    expect(screen.getByRole("button", { name: /Standard/ })).toHaveAttribute(
-      "aria-pressed",
-      "false",
+    await vi.waitFor(() =>
+      expect(request).toHaveBeenCalledWith(
+        `/api/v1/resumes/${VERSION.resume_id}`,
+        expect.objectContaining({ method: "PATCH", body: { template: "engineering" } }),
+      ),
     );
   });
 
@@ -261,7 +262,7 @@ describe("GeneratePanel for a cover letter", () => {
   it("offers no template choice, because a letter has one shape", () => {
     renderPanel(false, "cover_letter");
 
-    expect(screen.queryByRole("button", { name: /Academic/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Change" })).not.toBeInTheDocument();
     expect(screen.getByLabelText("Company")).toBeInTheDocument();
   });
 });

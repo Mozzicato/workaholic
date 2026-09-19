@@ -4,11 +4,13 @@ These tests print actual PDFs. They are skipped when Chromium is not installed, 
 without `playwright install chromium` still runs the rest of the suite; CI installs it.
 """
 
+import io
 import uuid
 from typing import Any
 
 import pytest
 from playwright.async_api import Error as PlaywrightError
+from pypdf import PdfReader
 
 from app.models.candidate import ResumeTemplate
 from app.services.resume.pdf import PdfRenderer
@@ -50,12 +52,25 @@ class TestRendering:
         assert len(content) > 1000
 
     @pytest.mark.parametrize("template", list(ResumeTemplate))
-    async def test_every_template_prints(
+    async def test_every_template_prints_text_an_ats_can_read_back(
         self, renderer: PdfRenderer, template: ResumeTemplate
     ) -> None:
+        """What an ATS does: open the PDF and read the text out. Every template must survive it."""
         content = await renderer.render(render_html(DOCUMENT, template))
+        text = " ".join(page.extract_text() or "" for page in PdfReader(io.BytesIO(content)).pages)
+        flat = " ".join(text.split())
 
         assert content.startswith(PDF_HEADER)
+        for fact in (
+            "Ada Lovelace",
+            "ada@example.com",
+            "Paystack",
+            "Helped build the payouts reconciliation service",
+            "University of Lagos",
+            "Bus tracker",
+            "AZ-900",
+        ):
+            assert fact in flat, f"{template.value}: {fact!r} did not read back"
 
     async def test_the_text_is_selectable_rather_than_an_image(self, renderer: PdfRenderer) -> None:
         """An ATS reads text. A resume rendered as pixels is worthless to the person holding it."""

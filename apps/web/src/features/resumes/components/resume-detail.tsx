@@ -135,6 +135,7 @@ function Loaded({ resume }: { resume: Resume }) {
       <GeneratePanel
         resumeId={resume.id}
         documentType={resume.document_type}
+        template={resume.template}
         targetRole={resume.target_role}
         hasVersions={(versions.data?.length ?? 0) > 0}
         onGenerated={setSelectedVersionId}
@@ -144,12 +145,15 @@ function Loaded({ resume }: { resume: Resume }) {
         resumeId={resume.id}
         selectedId={selectedVersionId}
         onSelect={setSelectedVersionId}
+        // A letter has one layout; a resume is shown in whichever template is chosen now.
+        template={resume.document_type === "cover_letter" ? undefined : resume.template}
       />
 
       {resume.document_type !== "cover_letter" && selectedVersionId ? (
         <ResumeTools
           resumeId={resume.id}
           versionId={selectedVersionId}
+          template={resume.template}
           onTailored={setSelectedVersionId}
         />
       ) : null}

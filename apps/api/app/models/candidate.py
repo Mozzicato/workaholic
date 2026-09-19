@@ -65,17 +65,34 @@ class ResumeStatus(StrEnum):
 
 
 class ResumeTemplate(StrEnum):
-    """The three V1 templates (PRD §20). All are single-column and parse predictably."""
+    """How a resume looks. Every template renders the same facts through the same structure.
+
+    The first three are the V1 set (PRD §20); the rest were added when templates became the first
+    thing a person chooses. Only `sidebar` uses two columns, and it says so where it is offered.
+    """
 
     STANDARD = "standard"
     COMPACT = "compact"
     ACADEMIC = "academic"
+    CLASSIC = "classic"
+    HARVARD = "harvard"
+    ENGINEERING = "engineering"
+    MODERN = "modern"
+    BOLD = "bold"
+    SIDEBAR = "sidebar"
+    EXECUTIVE = "executive"
+    MINIMAL = "minimal"
 
 
 def _enum(enum_type: type[StrEnum], name: str) -> Enum:
     # Stored as VARCHAR with a CHECK constraint: new values need no PostgreSQL type migration.
     return Enum(
-        enum_type, name=name, native_enum=False, values_callable=lambda e: [m.value for m in e]
+        enum_type,
+        name=name,
+        native_enum=False,
+        # Room to grow: without a length the column is as wide as today's longest value.
+        length=32,
+        values_callable=lambda e: [m.value for m in e],
     )
 
 
@@ -160,6 +177,13 @@ class Resume(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     )
     # The version a download or preview serves. Set when generation succeeds.
     current_version_id: Mapped[uuid.UUID | None] = mapped_column()
+    # The look chosen when the resume was created. Each version records the one it was written in.
+    template: Mapped[ResumeTemplate] = mapped_column(
+        _enum(ResumeTemplate, "resume_template"),
+        default=ResumeTemplate.CLASSIC,
+        server_default=ResumeTemplate.CLASSIC.value,
+        nullable=False,
+    )
 
 
 class ResumeVersion(UUIDPrimaryKeyMixin, TimestampMixin, Base):

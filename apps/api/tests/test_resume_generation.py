@@ -156,7 +156,7 @@ class TestGeneration:
         assert body["version_number"] == 1
         assert body["schema_version"] == "1"
         assert body["prompt_version"] == GENERATE_PROMPT_VERSION
-        assert body["template"] == "standard"
+        assert body["template"] == "classic"  # the template a new resume starts with
         bullet = body["content"]["experience"][0]["bullets"][0]
         assert bullet["text"] == "Helped build the payouts reconciliation service"
         assert bullet["source_bullet_index"] == 0

@@ -1,0 +1,58 @@
+/* Modern: a clean sans with teal headings and small contact icons. */
+
+body {
+  font-family: "Lato", "Helvetica Neue", Arial, sans-serif;
+  font-size: 10pt;
+  line-height: 1.4;
+  color: #1f2937;
+}
+
+.header {
+  border-bottom: none;
+  padding-bottom: 0;
+  margin-bottom: 12pt;
+}
+
+.name {
+  font-size: 22pt;
+  color: #111827;
+}
+
+.contact {
+  font-size: 9.5pt;
+  color: #1f2937;
+}
+
+.contact-item + .contact-item::before {
+  content: "";
+}
+
+.contact-item {
+  display: inline-block;
+  margin: 0 6pt;
+}
+
+.icon {
+  color: #0e7490;
+}
+
+a {
+  border-bottom: none;
+}
+
+.section-title {
+  font-size: 10.5pt;
+  letter-spacing: 0.6pt;
+  color: #0e7490;
+  border-bottom: 1pt solid #1f2937;
+  padding-bottom: 2pt;
+}
+
+.entry-title {
+  font-size: 10.5pt;
+  color: #111827;
+}
+
+.entry-sub {
+  color: #1f2937;
+}

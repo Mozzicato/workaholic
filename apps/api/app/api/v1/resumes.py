@@ -127,6 +127,9 @@ async def generate_version(
     resume = await ResumeService(session).get(user, resume_id)
     profile = await CandidateProfileService(session).get_or_create(user)
     evidence = await EvidenceService(session).list_for_user(user)
+    template = payload.template or resume.template
+    # A template picked while writing becomes the resume's own, so the next draft keeps it.
+    resume.template = template
 
     if resume.document_type is DocumentType.COVER_LETTER:
         if payload.brief is None:
@@ -151,7 +154,7 @@ async def generate_version(
             schema_version=LETTER_SCHEMA_VERSION,
             prompt_version=WRITE_PROMPT_VERSION,
             model=model,
-            template=payload.template,
+            template=template,
         )
     else:
         version = await ResumeGenerationService(session, llm).generate(
@@ -159,7 +162,7 @@ async def generate_version(
             resume=resume,
             profile=profile,
             evidence=evidence,
-            template=payload.template,
+            template=template,
         )
     return ResumeVersionRead.model_validate(version)
 
@@ -198,13 +201,21 @@ async def read_version(
     },
 )
 async def preview_version(
-    user: CurrentUser, session: SessionDep, resume_id: uuid.UUID, version_id: uuid.UUID
+    user: CurrentUser,
+    session: SessionDep,
+    resume_id: uuid.UUID,
+    version_id: uuid.UUID,
+    template: ResumeTemplate | None = None,
 ) -> Response:
-    """The resume as HTML — the same markup the PDF is printed from."""
+    """The resume as HTML — the same markup the PDF is printed from.
+
+    `template` shows the same version in another look. Nothing is rewritten: a template is
+    presentation, so trying one on needs no new draft and no model.
+    """
     service = ResumeService(session)
     resume = await service.get(user, resume_id)
     version = await service.get_version(user, resume_id, version_id)
-    html = _render(resume.document_type, version.content, version.template)
+    html = _render(resume.document_type, version.content, template or version.template)
     return Response(
         content=html,
         media_type="text/html; charset=utf-8",
@@ -229,12 +240,14 @@ async def download_version_pdf(
     pdf: Pdf,
     resume_id: uuid.UUID,
     version_id: uuid.UUID,
+    template: ResumeTemplate | None = None,
 ) -> Response:
     """The resume as a PDF, printed from the same HTML the preview shows."""
     service = ResumeService(session)
     resume = await service.get(user, resume_id)
     version = await service.get_version(user, resume_id, version_id)
-    content = await pdf.render(_render(resume.document_type, version.content, version.template))
+    chosen = template or version.template
+    content = await pdf.render(_render(resume.document_type, version.content, chosen))
     filename = _filename(resume.title, version.version_number)
     return Response(
         content=content,
@@ -337,6 +350,7 @@ async def ats_report(
     resume_id: uuid.UUID,
     version_id: uuid.UUID,
     job_id: uuid.UUID | None = None,
+    template: ResumeTemplate | None = None,
 ) -> AtsReportRead:
     """Check this version against deterministic ATS criteria (PRD §34, §35).
 
@@ -351,7 +365,8 @@ async def ats_report(
         )
     version = await service.get_version(user, resume_id, version_id)
     document = ResumeDocument.model_validate(version.content)
-    html = render_html(document, version.template)
+    # Checked in the template being looked at: layout is exactly what an ATS can trip over.
+    html = render_html(document, template or version.template)
 
     analysis = None
     if job_id is not None:

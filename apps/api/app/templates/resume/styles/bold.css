@@ -1,0 +1,57 @@
+/* Bold: a heavy name, and headings that stand out on a warm band. */
+
+body {
+  font-family: "Source Sans 3", "Helvetica Neue", Arial, sans-serif;
+  font-size: 10.5pt;
+  line-height: 1.35;
+  color: #111;
+}
+
+.header {
+  border-bottom: none;
+  padding-bottom: 0;
+  margin-bottom: 12pt;
+}
+
+/* Heavy rather than capitalised: CSS capitals are real capitals in the PDF's text, and an ATS
+   would store the name as "ADA LOVELACE". */
+.name {
+  font-size: 24pt;
+  font-weight: 700;
+  letter-spacing: 0.3pt;
+}
+
+.contact {
+  margin-top: 3pt;
+  color: #111;
+}
+
+.contact-item + .contact-item::before {
+  content: " | ";
+  color: #111;
+}
+
+a {
+  border-bottom: none;
+}
+
+.section-title {
+  font-size: 11pt;
+  letter-spacing: 0.4pt;
+  color: #111;
+  background: #fdecb2;
+  border-bottom: 1pt solid #111;
+  padding: 1pt 4pt;
+  margin-bottom: 5pt;
+}
+
+.entry-title,
+.entry-dates {
+  font-size: 10.5pt;
+  color: #111;
+}
+
+.entry-sub,
+.entry-note {
+  color: #111;
+}

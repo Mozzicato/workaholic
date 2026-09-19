@@ -47,6 +47,7 @@ export function useCreateResume() {
       title: string;
       target_role?: string | null;
       document_type?: DocumentType;
+      template?: ResumeTemplate;
     }) => createResume(getApiClient(), body),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: resumeKeys.all }),
   });
@@ -55,8 +56,11 @@ export function useCreateResume() {
 export function useUpdateResume(id: string) {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (body: { title?: string; target_role?: string | null }) =>
-      updateResume(getApiClient(), id, body),
+    mutationFn: (body: {
+      title?: string;
+      target_role?: string | null;
+      template?: ResumeTemplate;
+    }) => updateResume(getApiClient(), id, body),
     onSuccess: (resume) => {
       queryClient.setQueryData(resumeKeys.detail(id), resume);
       void queryClient.invalidateQueries({ queryKey: resumeKeys.all });
@@ -85,10 +89,15 @@ export function useVersions(resumeId: string) {
   });
 }
 
-export function usePreviewHtml(resumeId: string, versionId: string | undefined) {
+export function usePreviewHtml(
+  resumeId: string,
+  versionId: string | undefined,
+  template?: ResumeTemplate,
+) {
   return useQuery({
-    queryKey: versionKeys.preview(resumeId, versionId ?? "none"),
-    queryFn: ({ signal }) => fetchPreviewHtml(getApiClient(), resumeId, versionId!, signal),
+    queryKey: [...versionKeys.preview(resumeId, versionId ?? "none"), template ?? "own"],
+    queryFn: ({ signal }) =>
+      fetchPreviewHtml(getApiClient(), resumeId, versionId!, template, signal),
     enabled: Boolean(versionId),
     staleTime: Infinity, // a version never changes once written
   });
@@ -97,8 +106,8 @@ export function usePreviewHtml(resumeId: string, versionId: string | undefined) 
 export function useGenerateVersion(resumeId: string) {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: ({ template, brief }: { template: ResumeTemplate; brief?: LetterBrief }) =>
-      generateVersion(getApiClient(), resumeId, template, brief),
+    mutationFn: ({ brief }: { brief?: LetterBrief }) =>
+      generateVersion(getApiClient(), resumeId, brief),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: versionKeys.all(resumeId) });
       void queryClient.invalidateQueries({ queryKey: resumeKeys.detail(resumeId) });
@@ -110,8 +119,14 @@ export function useGenerateVersion(resumeId: string) {
 /** Saves the PDF through a temporary link: the file never leaves the browser's memory. */
 export function useDownloadPdf(resumeId: string) {
   return useMutation({
-    mutationFn: async (versionId: string) => {
-      const { blob, filename } = await fetchPdf(getApiClient(), resumeId, versionId);
+    mutationFn: async ({
+      versionId,
+      template,
+    }: {
+      versionId: string;
+      template?: ResumeTemplate;
+    }) => {
+      const { blob, filename } = await fetchPdf(getApiClient(), resumeId, versionId, template);
       const url = URL.createObjectURL(blob);
       try {
         const link = document.createElement("a");
@@ -138,11 +153,16 @@ export function useTailor(resumeId: string) {
 }
 
 /** Only fetched on request: it prints a PDF on the server to check its text reads back. */
-export function useAtsReport(resumeId: string, versionId: string | null, jobId: string | null) {
+export function useAtsReport(
+  resumeId: string,
+  versionId: string | null,
+  jobId: string | null,
+  template?: ResumeTemplate,
+) {
   return useQuery({
-    queryKey: ["resumes", resumeId, "versions", versionId, "ats", jobId ?? "none"],
+    queryKey: ["resumes", resumeId, "versions", versionId, "ats", jobId ?? "none", template],
     queryFn: ({ signal }) =>
-      getAtsReport(getApiClient(), resumeId, versionId as string, jobId, signal),
+      getAtsReport(getApiClient(), resumeId, versionId as string, jobId, template, signal),
     enabled: false,
     staleTime: Infinity,
   });

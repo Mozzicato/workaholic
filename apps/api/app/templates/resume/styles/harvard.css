@@ -1,0 +1,61 @@
+/* Harvard: the careers-office classic. Times-style serif, capital headings, italic roles. */
+
+body {
+  font-family: "Tinos", "Times New Roman", serif;
+  font-size: 10.5pt;
+  line-height: 1.35;
+  color: #000;
+}
+
+.header {
+  border-bottom: none;
+  margin-bottom: 12pt;
+}
+
+.name {
+  font-size: 15pt;
+  letter-spacing: 0.3pt;
+}
+
+.contact {
+  margin-top: 2pt;
+  font-size: 10pt;
+  color: #000;
+}
+
+.contact-item + .contact-item::before {
+  content: " | ";
+  color: #000;
+}
+
+a {
+  border-bottom: none;
+}
+
+.section-title {
+  font-size: 10.5pt;
+  letter-spacing: 0.2pt;
+  color: #000;
+  border-bottom: 0.5pt solid #9ca3af;
+  padding-bottom: 1pt;
+  margin-bottom: 6pt;
+}
+
+.entry-title,
+.entry-dates,
+.entry-sub,
+.entry-note {
+  font-size: 10.5pt;
+  color: #000;
+}
+
+.bullets {
+  padding-left: 16pt;
+}
+
+.tools,
+.skill-group,
+.certification {
+  font-size: 10.5pt;
+  color: #000;
+}

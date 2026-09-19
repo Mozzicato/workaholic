@@ -8,7 +8,7 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
 import { useJobs } from "@/features/jobs/hooks";
-import type { AtsReport, ChangeSummary } from "@/features/resumes/api";
+import type { AtsReport, ChangeSummary, ResumeTemplate } from "@/features/resumes/api";
 import { useAtsReport, useTailor } from "@/features/resumes/hooks";
 import { errorMessage } from "@/lib/api/errors";
 import { routes } from "@/lib/routes";
@@ -18,10 +18,12 @@ import { cn } from "@/lib/utils";
 export function ResumeTools({
   resumeId,
   versionId,
+  template,
   onTailored,
 }: {
   resumeId: string;
   versionId: string;
+  template?: ResumeTemplate;
   onTailored: (versionId: string) => void;
 }) {
   const jobs = useJobs();
@@ -73,7 +75,7 @@ export function ResumeTools({
         </p>
       )}
 
-      <Ats resumeId={resumeId} versionId={versionId} jobId={jobId || null} />
+      <Ats resumeId={resumeId} versionId={versionId} jobId={jobId || null} template={template} />
       {jobId ? (
         <Tailor resumeId={resumeId} versionId={versionId} jobId={jobId} onTailored={onTailored} />
       ) : null}
@@ -85,12 +87,14 @@ function Ats({
   resumeId,
   versionId,
   jobId,
+  template,
 }: {
   resumeId: string;
   versionId: string;
   jobId: string | null;
+  template?: ResumeTemplate;
 }) {
-  const report = useAtsReport(resumeId, versionId, jobId);
+  const report = useAtsReport(resumeId, versionId, jobId, template);
 
   return (
     <div className="space-y-4 border-t pt-5">

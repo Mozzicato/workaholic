@@ -14,10 +14,10 @@ import { Textarea } from "@/components/ui/textarea";
 import { isReady, ReadinessChecklist } from "@/features/profile/components/readiness-checklist";
 import { useReadiness } from "@/features/profile/hooks";
 import type { DocumentType, ResumeTemplate } from "@/features/resumes/api";
+import { TemplateSetting } from "@/features/resumes/components/change-template";
 import { useGenerateVersion } from "@/features/resumes/hooks";
 import { ApiError, errorMessage } from "@/lib/api/errors";
 import { routes } from "@/lib/routes";
-import { cn } from "@/lib/utils";
 
 /** Refusals the user can act on. Anything else is a failure, and is reported as one. */
 const REFUSAL_TITLES: Record<string, string> = {
@@ -27,27 +27,22 @@ const REFUSAL_TITLES: Record<string, string> = {
 };
 const REFUSAL_CODES = new Set(Object.keys(REFUSAL_TITLES));
 
-const TEMPLATES: { value: ResumeTemplate; label: string; description: string }[] = [
-  { value: "standard", label: "Standard", description: "Roomy and conventional" },
-  { value: "compact", label: "Compact", description: "Fits more on one page" },
-  { value: "academic", label: "Academic", description: "Education first" },
-];
-
 export function GeneratePanel({
   resumeId,
   documentType,
+  template,
   targetRole,
   hasVersions,
   onGenerated,
 }: {
   resumeId: string;
   documentType: DocumentType;
+  template: ResumeTemplate;
   targetRole: string | null;
   hasVersions: boolean;
   onGenerated: (versionId: string) => void;
 }) {
   const isLetter = documentType === "cover_letter";
-  const [template, setTemplate] = useState<ResumeTemplate>("standard");
   const [brief, setBrief] = useState({ company: "", hiring_manager: "", job_advert: "" });
   const [blocked, setBlocked] = useState<{
     title: string;
@@ -64,7 +59,6 @@ export function GeneratePanel({
     setBlocked(null);
     try {
       const version = await generate.mutateAsync({
-        template,
         brief: isLetter
           ? {
               company: brief.company.trim(),
@@ -169,30 +163,9 @@ export function GeneratePanel({
           </Field>
         </div>
       ) : (
-        <fieldset className="mt-5">
-          <legend className="text-sm font-medium">Template</legend>
-          <div className="mt-2 grid gap-2 sm:grid-cols-3">
-            {TEMPLATES.map((option) => {
-              const selected = template === option.value;
-              return (
-                <button
-                  key={option.value}
-                  type="button"
-                  aria-pressed={selected}
-                  onClick={() => setTemplate(option.value)}
-                  className={cn(
-                    "rounded-lg border px-3 py-2.5 text-left transition-colors outline-none",
-                    "focus-visible:ring-3 focus-visible:ring-ring/50",
-                    selected ? "border-primary bg-accent" : "hover:bg-muted/60",
-                  )}
-                >
-                  <span className="block text-sm font-medium">{option.label}</span>
-                  <span className="block text-xs text-muted-foreground">{option.description}</span>
-                </button>
-              );
-            })}
-          </div>
-        </fieldset>
+        <div className="mt-5">
+          <TemplateSetting resumeId={resumeId} template={template} />
+        </div>
       )}
 
       {blocked ? (

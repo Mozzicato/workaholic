@@ -7,8 +7,9 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/ui/spinner";
-import type { ResumeVersionSummary } from "@/features/resumes/api";
+import type { ResumeTemplate, ResumeVersionSummary } from "@/features/resumes/api";
 import { useDownloadPdf, usePreviewHtml, useVersions } from "@/features/resumes/hooks";
+import { templateInfo } from "@/features/resumes/templates";
 import { errorMessage } from "@/lib/api/errors";
 import { cn } from "@/lib/utils";
 
@@ -16,10 +17,13 @@ export function VersionPanel({
   resumeId,
   selectedId,
   onSelect,
+  template,
 }: {
   resumeId: string;
   selectedId: string | null;
   onSelect: (versionId: string) => void;
+  /** Shown in this template rather than the one each draft was written in. */
+  template?: ResumeTemplate;
 }) {
   const versions = useVersions(resumeId);
   const list = versions.data ?? [];
@@ -39,7 +43,9 @@ export function VersionPanel({
         <h2 id="drafts-heading" className="font-heading text-xl">
           Drafts
         </h2>
-        {current ? <DownloadButton resumeId={resumeId} version={current} /> : null}
+        {current ? (
+          <DownloadButton resumeId={resumeId} version={current} template={template} />
+        ) : null}
       </div>
 
       <ul className="flex flex-wrap gap-2">
@@ -59,7 +65,7 @@ export function VersionPanel({
               >
                 <span className="block font-medium">{version.label}</span>
                 <span className="block text-xs text-muted-foreground">
-                  {version.template} ·{" "}
+                  {templateInfo(version.template).name} ·{" "}
                   {new Intl.DateTimeFormat(undefined, {
                     dateStyle: "medium",
                     timeStyle: "short",
@@ -71,7 +77,7 @@ export function VersionPanel({
         })}
       </ul>
 
-      {current ? <Preview resumeId={resumeId} versionId={current.id} /> : null}
+      {current ? <Preview resumeId={resumeId} versionId={current.id} template={template} /> : null}
     </section>
   );
 }
@@ -79,9 +85,11 @@ export function VersionPanel({
 function DownloadButton({
   resumeId,
   version,
+  template,
 }: {
   resumeId: string;
   version: ResumeVersionSummary;
+  template?: ResumeTemplate;
 }) {
   const download = useDownloadPdf(resumeId);
 
@@ -90,9 +98,12 @@ function DownloadButton({
       variant="outline"
       disabled={download.isPending}
       onClick={() => {
-        download.mutate(version.id, {
-          onError: (error) => toast.error(errorMessage(error)),
-        });
+        download.mutate(
+          { versionId: version.id, template },
+          {
+            onError: (error) => toast.error(errorMessage(error)),
+          },
+        );
       }}
     >
       {download.isPending ? <Spinner /> : <DownloadIcon aria-hidden="true" />}
@@ -101,8 +112,16 @@ function DownloadButton({
   );
 }
 
-function Preview({ resumeId, versionId }: { resumeId: string; versionId: string }) {
-  const preview = usePreviewHtml(resumeId, versionId);
+function Preview({
+  resumeId,
+  versionId,
+  template,
+}: {
+  resumeId: string;
+  versionId: string;
+  template?: ResumeTemplate;
+}) {
+  const preview = usePreviewHtml(resumeId, versionId, template);
   const [height, setHeight] = useState(900);
 
   if (preview.isPending) return <Skeleton className="h-[900px] rounded-xl" />;

@@ -1,0 +1,83 @@
+/* Classic: a book serif, centred name, a ruled heading per section, one line per entry. */
+
+body {
+  font-family: "Charis SIL", "Georgia", serif;
+  font-size: 10.5pt;
+  line-height: 1.38;
+  color: #111;
+}
+
+.header {
+  border-bottom: none;
+  padding-bottom: 0;
+  margin-bottom: 10pt;
+}
+
+.name {
+  font-size: 26pt;
+  font-weight: 400;
+  letter-spacing: 0;
+}
+
+.contact {
+  margin-top: 4pt;
+  font-size: 10pt;
+  color: #111;
+}
+
+.contact-item + .contact-item::before {
+  content: " | ";
+  color: #111;
+}
+
+a {
+  border-bottom: none;
+}
+
+.section {
+  margin-bottom: 10pt;
+}
+
+.section-title {
+  font-size: 13pt;
+  font-weight: 700;
+  text-transform: none;
+  letter-spacing: 0;
+  color: #111;
+  border-bottom: 0.75pt solid #111;
+  padding-bottom: 1pt;
+  margin-bottom: 5pt;
+}
+
+.entry {
+  margin-bottom: 6pt;
+}
+
+.entry-title {
+  font-size: 10.5pt;
+}
+
+.entry-dates {
+  font-size: 10.5pt;
+  color: #111;
+}
+
+.entry-note {
+  color: #111;
+}
+
+.bullets {
+  margin-top: 2pt;
+  padding-left: 13pt;
+}
+
+.bullets li {
+  margin-bottom: 1pt;
+}
+
+.tools,
+.skill-group,
+.certification {
+  font-size: 10.5pt;
+  color: #111;
+}

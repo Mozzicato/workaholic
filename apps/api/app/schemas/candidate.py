@@ -235,11 +235,13 @@ class ResumeCreate(CandidateModel):
     title: ShortText
     target_role: ShortText | None = None
     document_type: DocumentType = DocumentType.RESUME
+    template: ResumeTemplate = ResumeTemplate.CLASSIC
 
 
 class ResumeUpdate(CandidateModel):
     title: ShortText | None = None
     target_role: ShortText | None = None
+    template: ResumeTemplate | None = None
 
 
 class ResumeRead(CandidateModel):
@@ -249,6 +251,7 @@ class ResumeRead(CandidateModel):
     title: str
     target_role: str | None
     document_type: DocumentType
+    template: ResumeTemplate
     status: ResumeStatus
     current_version_id: uuid.UUID | None
     created_at: datetime
@@ -294,7 +297,8 @@ class LetterBriefRequest(CandidateModel):
 
 
 class GenerateResumeRequest(CandidateModel):
-    template: ResumeTemplate = ResumeTemplate.STANDARD
+    # Omitted: the template the resume was created with. Given: used, and remembered.
+    template: ResumeTemplate | None = None
     brief: LetterBriefRequest | None = None
 
 
