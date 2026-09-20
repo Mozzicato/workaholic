@@ -5,7 +5,7 @@ from fastapi import Depends, Request
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.config import get_settings
+from app.core.config import Settings
 from app.core.errors import AppError, ErrorCode, UnauthenticatedError
 from app.models.user import User
 from app.services.ai.base import LLMProvider
@@ -70,15 +70,21 @@ async def get_current_user(
     return await UserService(session).resolve(principal)
 
 
-def is_admin(user: User) -> bool:
-    """Administrators are named in settings, by the address the identity provider verified."""
+def is_admin(request: Request, user: User) -> bool:
+    """Administrators are named in the running app's settings, by their verified address.
+
+    Read from the application rather than the environment: a request must be answered from the
+    configuration the app was started with, which is also the only thing a test can control.
+    """
+    settings: Settings = request.app.state.settings
     email = (user.email or "").strip().lower()
-    return bool(email) and email in get_settings().admin_emails
+    return bool(email) and email in settings.admin_emails
 
 
-async def get_admin_user(user: Annotated[User, Depends(get_current_user)]) -> User:
-    if not is_admin(user):
-        # Deliberately the same answer as a missing page would give about its existence.
+async def get_admin_user(
+    request: Request, user: Annotated[User, Depends(get_current_user)]
+) -> User:
+    if not is_admin(request, user):
         raise AppError(ErrorCode.FORBIDDEN, "This area is for administrators.", 403)
     return user
 

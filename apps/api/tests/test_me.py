@@ -4,11 +4,12 @@ import asyncio
 import uuid
 
 import httpx
+import pytest
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncEngine
 
 from app.models.user import User
-from tests.conftest import FakeIdentityProvider, bearer
+from tests.conftest import AppFactory, FakeIdentityProvider, bearer, running
 
 ME = "/api/v1/me"
 
@@ -93,3 +94,27 @@ async def test_google_sign_in_records_provider_and_name(
 
     assert body["auth_provider"] == "google"
     assert body["name"] == "Ada Lovelace"
+
+
+@pytest.mark.usefixtures("db_engine")
+async def test_an_account_can_erase_itself(make_app: AppFactory, idp: FakeIdentityProvider) -> None:
+    """Leaving must be possible, and must take everything with it."""
+    async with running(make_app()) as client:
+        headers = bearer(idp.token(subject="user-leaving", email="ada@example.com"))
+        await client.get(ME, headers=headers)
+        await client.patch(
+            "/api/v1/profile", headers=headers, json={"skills": [{"name": "Python"}]}
+        )
+        await client.post("/api/v1/resumes", headers=headers, json={"title": "Mine"})
+
+        deleted = await client.delete(ME, headers=headers)
+
+        # The same person signing in again gets an empty account, not their old one.
+        again = await client.get(ME, headers=headers)
+        profile = await client.get("/api/v1/profile", headers=headers)
+        resumes = await client.get("/api/v1/resumes", headers=headers)
+
+    assert deleted.status_code == 204
+    assert again.status_code == 200
+    assert profile.json()["skills"] == []
+    assert resumes.json() == []

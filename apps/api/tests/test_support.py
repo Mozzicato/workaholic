@@ -5,24 +5,15 @@ what is tested here is what it must *not* show.
 """
 
 import uuid
-from typing import Any
 
 import httpx
 import pytest
 
-from app.core.config import get_settings
 from tests.conftest import AppFactory, FakeIdentityProvider, bearer, running
 
+# The app is started with one named administrator, exactly as production is.
 ADMIN_EMAIL = "boss@workaholic.dev"
 PDF = b"%PDF-1.4\n%fake but shaped like a pdf\n"
-
-
-@pytest.fixture(autouse=True)
-def _admins(monkeypatch: pytest.MonkeyPatch) -> Any:
-    """One named administrator, as production has."""
-    settings = get_settings()
-    monkeypatch.setattr(settings, "admin_emails", [ADMIN_EMAIL], raising=False)
-    return settings
 
 
 async def sign_in(
@@ -38,7 +29,7 @@ class TestFeedback:
     async def test_a_message_reaches_the_administrator(
         self, make_app: AppFactory, idp: FakeIdentityProvider
     ) -> None:
-        async with running(make_app()) as client:
+        async with running(make_app(admin_emails=[ADMIN_EMAIL])) as client:
             user = await sign_in(client, idp, "ada@example.com")
             sent = await client.post(
                 "/api/v1/feedback",
@@ -58,14 +49,14 @@ class TestFeedback:
     async def test_an_empty_message_is_refused(
         self, make_app: AppFactory, idp: FakeIdentityProvider
     ) -> None:
-        async with running(make_app()) as client:
+        async with running(make_app(admin_emails=[ADMIN_EMAIL])) as client:
             user = await sign_in(client, idp, "ada@example.com")
             response = await client.post("/api/v1/feedback", headers=user, json={"message": "  "})
 
         assert response.status_code == 422
 
     async def test_feedback_needs_signing_in(self, make_app: AppFactory) -> None:
-        async with running(make_app()) as client:
+        async with running(make_app(admin_emails=[ADMIN_EMAIL])) as client:
             response = await client.post("/api/v1/feedback", json={"message": "hi"})
 
         assert response.status_code == 401
@@ -73,7 +64,7 @@ class TestFeedback:
     async def test_one_user_cannot_read_another_s_feedback(
         self, make_app: AppFactory, idp: FakeIdentityProvider
     ) -> None:
-        async with running(make_app()) as client:
+        async with running(make_app(admin_emails=[ADMIN_EMAIL])) as client:
             ada = await sign_in(client, idp, "ada@example.com")
             await client.post("/api/v1/feedback", headers=ada, json={"message": "private"})
             eve = await sign_in(client, idp, "eve@example.com")
@@ -89,7 +80,7 @@ class TestSendingATemplate:
     async def test_a_template_is_kept_for_the_team_to_look_at(
         self, make_app: AppFactory, idp: FakeIdentityProvider
     ) -> None:
-        async with running(make_app()) as client:
+        async with running(make_app(admin_emails=[ADMIN_EMAIL])) as client:
             user = await sign_in(client, idp, "ada@example.com")
             sent = await client.post(
                 "/api/v1/template-requests",
@@ -113,7 +104,7 @@ class TestSendingATemplate:
     async def test_a_file_that_is_not_a_document_is_refused(
         self, make_app: AppFactory, idp: FakeIdentityProvider
     ) -> None:
-        async with running(make_app()) as client:
+        async with running(make_app(admin_emails=[ADMIN_EMAIL])) as client:
             user = await sign_in(client, idp, "ada@example.com")
             response = await client.post(
                 "/api/v1/template-requests",
@@ -127,7 +118,7 @@ class TestSendingATemplate:
         self, make_app: AppFactory, idp: FakeIdentityProvider
     ) -> None:
         """A sent-in template is a message to the team, not a document to read into a profile."""
-        async with running(make_app()) as client:
+        async with running(make_app(admin_emails=[ADMIN_EMAIL])) as client:
             user = await sign_in(client, idp, "ada@example.com")
             await client.post(
                 "/api/v1/template-requests",
@@ -144,7 +135,7 @@ class TestSendingATemplate:
     async def test_a_sent_template_can_be_deleted_once_it_is_built(
         self, make_app: AppFactory, idp: FakeIdentityProvider
     ) -> None:
-        async with running(make_app()) as client:
+        async with running(make_app(admin_emails=[ADMIN_EMAIL])) as client:
             user = await sign_in(client, idp, "ada@example.com")
             await client.post(
                 "/api/v1/template-requests",
@@ -170,7 +161,7 @@ class TestTheDashboard:
     async def test_only_a_named_administrator_may_open_it(
         self, make_app: AppFactory, idp: FakeIdentityProvider
     ) -> None:
-        async with running(make_app()) as client:
+        async with running(make_app(admin_emails=[ADMIN_EMAIL])) as client:
             ordinary = await sign_in(client, idp, "ada@example.com")
             admin = await sign_in(client, idp, ADMIN_EMAIL)
 
@@ -186,7 +177,7 @@ class TestTheDashboard:
     async def test_the_account_page_says_who_is_an_administrator(
         self, make_app: AppFactory, idp: FakeIdentityProvider
     ) -> None:
-        async with running(make_app()) as client:
+        async with running(make_app(admin_emails=[ADMIN_EMAIL])) as client:
             ordinary = await sign_in(client, idp, "ada@example.com")
             admin = await sign_in(client, idp, ADMIN_EMAIL)
 
@@ -199,7 +190,7 @@ class TestTheDashboard:
     async def test_it_counts_what_happened_without_reading_any_of_it(
         self, make_app: AppFactory, idp: FakeIdentityProvider
     ) -> None:
-        async with running(make_app()) as client:
+        async with running(make_app(admin_emails=[ADMIN_EMAIL])) as client:
             ada = await sign_in(client, idp, "ada@example.com")
             await client.patch(
                 "/api/v1/profile",
@@ -237,7 +228,7 @@ class TestTheDashboard:
     async def test_an_account_can_be_erased_but_not_the_administrator_s_own(
         self, make_app: AppFactory, idp: FakeIdentityProvider
     ) -> None:
-        async with running(make_app()) as client:
+        async with running(make_app(admin_emails=[ADMIN_EMAIL])) as client:
             ada = await sign_in(client, idp, "ada@example.com")
             await client.post("/api/v1/resumes", headers=ada, json={"title": "Mine"})
             admin = await sign_in(client, idp, ADMIN_EMAIL)
@@ -257,7 +248,7 @@ class TestTheDashboard:
         self, make_app: AppFactory, idp: FakeIdentityProvider
     ) -> None:
         """A complaint is worth acting on after the person who made it has gone."""
-        async with running(make_app()) as client:
+        async with running(make_app(admin_emails=[ADMIN_EMAIL])) as client:
             ada = await sign_in(client, idp, "ada@example.com")
             await client.post("/api/v1/feedback", headers=ada, json={"message": "too slow"})
             admin = await sign_in(client, idp, ADMIN_EMAIL)
@@ -272,7 +263,7 @@ class TestTheDashboard:
     async def test_a_message_can_be_marked_done(
         self, make_app: AppFactory, idp: FakeIdentityProvider
     ) -> None:
-        async with running(make_app()) as client:
+        async with running(make_app(admin_emails=[ADMIN_EMAIL])) as client:
             ada = await sign_in(client, idp, "ada@example.com")
             await client.post("/api/v1/feedback", headers=ada, json={"message": "a bug"})
             admin = await sign_in(client, idp, ADMIN_EMAIL)
