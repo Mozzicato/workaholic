@@ -104,6 +104,10 @@ class SupportService:
         entry.handled_at = datetime.now(UTC) if status is SupportStatus.DONE else None
         await self._session.commit()
 
+    async def delete_feedback(self, entry: Feedback) -> None:
+        await self._session.delete(entry)
+        await self._session.commit()
+
     async def delete_template_request(self, entry: TemplateRequest) -> None:
         await self._session.delete(entry)
         await self._session.commit()

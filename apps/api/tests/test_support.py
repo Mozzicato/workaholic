@@ -276,3 +276,18 @@ class TestTheDashboard:
         assert updated.status_code == 200
         assert updated.json()["status"] == "done"
         assert updated.json()["handled_at"] is not None
+
+    async def test_a_message_can_be_deleted_for_good(
+        self, make_app: AppFactory, idp: FakeIdentityProvider
+    ) -> None:
+        async with running(make_app(admin_emails=[ADMIN_EMAIL])) as client:
+            ada = await sign_in(client, idp, "ada@example.com")
+            await client.post("/api/v1/feedback", headers=ada, json={"message": "sent by mistake"})
+            admin = await sign_in(client, idp, ADMIN_EMAIL)
+            entry_id = (await client.get("/api/v1/admin/feedback", headers=admin)).json()[0]["id"]
+
+            deleted = await client.delete(f"/api/v1/admin/feedback/{entry_id}", headers=admin)
+            left = await client.get("/api/v1/admin/feedback", headers=admin)
+
+        assert deleted.status_code == 204
+        assert left.json() == []

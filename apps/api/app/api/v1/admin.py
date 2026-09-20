@@ -82,6 +82,18 @@ async def update_feedback(
     return FeedbackRead.model_validate(entry)
 
 
+@router.delete(
+    "/feedback/{feedback_id}", status_code=status.HTTP_204_NO_CONTENT, responses=RESPONSES
+)
+async def delete_feedback(admin: AdminUser, session: SessionDep, feedback_id: uuid.UUID) -> None:
+    """Remove a message for good — abuse, a duplicate, or something sent by mistake."""
+    service = SupportService(session)
+    entry = await service.feedback_item(feedback_id)
+    if entry is None:
+        raise NotFoundError("We couldn't find that message.")
+    await service.delete_feedback(entry)
+
+
 @router.get("/template-requests", response_model=list[TemplateRequestRead], responses=RESPONSES)
 async def list_template_requests(
     admin: AdminUser, session: SessionDep
