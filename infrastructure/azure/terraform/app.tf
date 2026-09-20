@@ -182,6 +182,7 @@ locals {
   }
   api_env = merge(local.runtime_env, {
     CORS_ORIGINS        = join(",", var.cors_origins)
+    ADMIN_EMAILS        = join(",", var.admin_emails)
     SUPABASE_URL        = var.supabase_url
     AI_PROVIDER         = "azure"
     AZURE_AI_ENDPOINT   = "https://${var.ai_account_name}.openai.azure.com"

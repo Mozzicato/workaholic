@@ -27,7 +27,7 @@ async def test_first_sign_in_creates_account(
 
     assert response.status_code == 200
     body = response.json()
-    assert set(body) == {"id", "email", "name", "auth_provider", "created_at"}
+    assert set(body) == {"id", "email", "name", "auth_provider", "created_at", "is_admin"}
     assert body["email"] == "ada@example.com"
     assert body["auth_provider"] == "email"
     assert body["name"] is None

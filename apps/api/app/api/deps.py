@@ -5,7 +5,8 @@ from fastapi import Depends, Request
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.errors import UnauthenticatedError
+from app.core.config import get_settings
+from app.core.errors import AppError, ErrorCode, UnauthenticatedError
 from app.models.user import User
 from app.services.ai.base import LLMProvider
 from app.services.ai.errors import AINotConfiguredError
@@ -69,8 +70,22 @@ async def get_current_user(
     return await UserService(session).resolve(principal)
 
 
+def is_admin(user: User) -> bool:
+    """Administrators are named in settings, by the address the identity provider verified."""
+    email = (user.email or "").strip().lower()
+    return bool(email) and email in get_settings().admin_emails
+
+
+async def get_admin_user(user: Annotated[User, Depends(get_current_user)]) -> User:
+    if not is_admin(user):
+        # Deliberately the same answer as a missing page would give about its existence.
+        raise AppError(ErrorCode.FORBIDDEN, "This area is for administrators.", 403)
+    return user
+
+
 SessionDep = Annotated[AsyncSession, Depends(get_session)]
 CurrentUser = Annotated[User, Depends(get_current_user)]
+AdminUser = Annotated[User, Depends(get_admin_user)]
 LLM = Annotated[LLMProvider, Depends(get_llm)]
 OptionalLLM = Annotated[LLMProvider | None, Depends(get_optional_llm)]
 Pdf = Annotated[PdfRenderer, Depends(get_pdf_renderer)]

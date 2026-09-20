@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
+import { useCurrentUser } from "@/features/account/hooks";
 import { routes } from "@/lib/routes";
 import { cn } from "@/lib/utils";
 
@@ -16,10 +17,15 @@ const LINKS = [
 
 export function MainNav() {
   const pathname = usePathname();
+  const account = useCurrentUser();
+  // Only an administrator is shown the dashboard; the API refuses it to anyone else regardless.
+  const links = account.data?.is_admin
+    ? [...LINKS, { href: routes.admin, label: "Dashboard" }]
+    : LINKS;
 
   return (
     <nav aria-label="Main" className="flex items-center gap-1">
-      {LINKS.map((link) => {
+      {links.map((link) => {
         // The dashboard owns /resumes/* too, so highlight it for those pages.
         const current =
           pathname === link.href ||

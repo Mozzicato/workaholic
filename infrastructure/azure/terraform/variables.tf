@@ -169,6 +169,12 @@ variable "supabase_url" {
   type = string
 }
 
+variable "admin_emails" {
+  description = "Verified email addresses allowed to open the admin dashboard."
+  type        = list(string)
+  default     = []
+}
+
 variable "tags" {
   type = map(string)
   default = {

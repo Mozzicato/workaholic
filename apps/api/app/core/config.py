@@ -62,6 +62,10 @@ class Settings(BaseSettings):
     # added incrementally, so the API must run without Redis.
     redis_url: str | None = None
 
+    # Who may see the admin dashboard, by verified email address. Empty means nobody, which
+    # is the right default: an operator is named deliberately, never by accident.
+    admin_emails: Annotated[list[str], NoDecode] = Field(default_factory=list)
+
     supabase_url: str
     # Not used yet; required only once server-side admin actions (account deletion) ship.
     supabase_secret_key: SecretStr | None = None
@@ -126,6 +130,15 @@ class Settings(BaseSettings):
     def _split_origins(cls, value: object) -> object:
         if isinstance(value, str):
             return [origin.strip().rstrip("/") for origin in value.split(",") if origin.strip()]
+        return value
+
+    @field_validator("admin_emails", mode="before")
+    @classmethod
+    def _split_admin_emails(cls, value: object) -> object:
+        if isinstance(value, str):
+            return [email.strip().lower() for email in value.split(",") if email.strip()]
+        if isinstance(value, list):
+            return [str(email).strip().lower() for email in value]
         return value
 
     @field_validator("supabase_url")

@@ -19,6 +19,7 @@ from app.models.interview import (
     InterviewStatus,
 )
 from app.models.job import JobDescription
+from app.models.support import Feedback, SupportStatus, TemplateRequest
 from app.models.user import User
 
 __all__ = [
@@ -28,6 +29,7 @@ __all__ = [
     "Evidence",
     "EvidenceSource",
     "EvidenceStatus",
+    "Feedback",
     "InterviewMessage",
     "InterviewRole",
     "InterviewSession",
@@ -38,5 +40,7 @@ __all__ = [
     "ResumeStatus",
     "ResumeTemplate",
     "ResumeVersion",
+    "SupportStatus",
+    "TemplateRequest",
     "User",
 ]

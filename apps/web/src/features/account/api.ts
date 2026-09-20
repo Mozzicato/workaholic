@@ -8,6 +8,7 @@ export const currentUserSchema = z.object({
   name: z.string().nullable(),
   auth_provider: z.string(),
   created_at: z.iso.datetime({ offset: true }),
+  is_admin: z.boolean().default(false),
 });
 
 export type CurrentUser = z.infer<typeof currentUserSchema>;
