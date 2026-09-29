@@ -16,6 +16,10 @@ Version history:
       instructions are refused before they reach here, and this is the second line of defence.
   v3  Write to win. v2 told the model to stay close to the candidate's phrasing, which produced
       flat, honest, forgettable bullets. It now writes the strongest version of the same facts.
+  v4  Merge. One line in, one line out meant "fixed the bugs" and "40 staff used it daily" could
+      never become the one sentence a recruiter should read. A written line now cites every
+      thing the person said that it draws on, so the facts stay traceable and the writing does
+      not have to stay fragmented.
 """
 
 import json
@@ -24,7 +28,7 @@ from dataclasses import dataclass
 
 from app.services.ai.base import ChatMessage
 
-GENERATE_PROMPT_VERSION = "resume.generate.v3"
+GENERATE_PROMPT_VERSION = "resume.generate.v4"
 
 GENERATE_SYSTEM_PROMPT = """\
 You write resume bullets for a candidate whose work is stronger than their writing. Your job is \
@@ -52,8 +56,17 @@ founding. A claim they cannot defend in an interview is worse for them than a pl
 Where a fact is vague, write the vague fact confidently rather than inventing a precise one. \
 Never write a placeholder such as "X%" or "N users".
 
-Return every bullet you were given, exactly once, keyed by its id, in the same order. Keep each \
-rewrite under 300 characters. Do not merge, split, drop or reorder bullets.
+You are given numbered lines. Combine the ones that describe the same piece of work into a \
+single strong sentence — what they did, and what it did for the people who used it — and list \
+every line id it came from in `source_ids`. Facts about the same work belong together: "fixed \
+the bugs" and "40 staff used it daily" are one sentence, not two.
+
+Rules for combining: never join lines from different roles or projects; never return more lines \
+for a role than you were given for it; use every line at least once; keep each under 300 \
+characters, and keep the strongest line first.
+
+Write the sentence itself, never a note about it: no "Recorded that", "Noted that", "Mentioned \
+that", and no reference to what was said or written down.
 
 The summary is two or three sentences: who they are, what they work on, and the most concrete \
 thing they have done, drawn only from the material below. If the material does not support one, \
@@ -100,8 +113,9 @@ def build_generate_messages(context: GenerationContext) -> list[ChatMessage]:
         "keeping every fact exactly as given."
         if context.target_role is None
         else (
-            f"The candidate is applying for: {context.target_role}. Rewrite each bullet below as "
-            "strongly as its facts allow, leading with the part that matters for that role and "
+            f"The candidate is applying for: {context.target_role}. Write these lines up as "
+            "strongly as their facts allow, combining lines about the same work, leading with "
+            "the part that matters for that role and "
             "using that field's ordinary words for things the candidate genuinely did. Keep every "
             "fact exactly as given, and add nothing about the role they did not say."
         )
@@ -123,8 +137,8 @@ def build_retry_message(problems: Sequence[str]) -> ChatMessage:
         content=(
             "That output added information the candidate never gave:\n"
             f"{listed}\n\n"
-            "Rewrite again, just as strongly, using only what is in the material above: keep the "
-            "sharp verbs and structure, and remove only the facts you added. Return every bullet "
-            "id exactly once."
+            "Write them again, just as strongly, using only what is in the material above: keep "
+            "the sharp verbs and structure, and remove only the facts you added. Cite the line "
+            "ids each sentence draws on, and use every line at least once."
         ),
     )

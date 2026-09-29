@@ -32,8 +32,8 @@ TWO_ROLE_PROFILE: dict[str, Any] = {
 WORDING = {
     "summary": "",
     "bullets": [
-        {"id": "e0.b0", "text": "Served customers during the morning rush"},
-        {"id": "e1.b0", "text": "Helped build the payouts reconciliation service"},
+        {"source_ids": ["e0.b0"], "text": "Served customers during the morning rush"},
+        {"source_ids": ["e1.b0"], "text": "Helped build the payouts reconciliation service"},
     ],
 }
 

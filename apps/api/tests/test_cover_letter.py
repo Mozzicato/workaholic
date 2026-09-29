@@ -257,7 +257,9 @@ class TestRenderingALetter:
         llm = ScriptedLLM(
             {
                 "summary": "",
-                "bullets": [{"id": "e0.b0", "text": "Helped build the payouts reconciliation"}],
+                "bullets": [
+                    {"source_ids": ["e0.b0"], "text": "Helped build the payouts reconciliation"}
+                ],
             }
         )
         async with running(app_with(llm, make_app)) as client:

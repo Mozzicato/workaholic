@@ -122,9 +122,11 @@ class GenerationBlockedError(AppError):
 
 
 class RewrittenBullet(BaseModel):
+    """One written line, and the ids of the things the person said that it draws on."""
+
     model_config = ConfigDict(extra="forbid")
 
-    id: str
+    source_ids: list[str]
     text: str
 
 
@@ -250,31 +252,66 @@ def _check_wording(
     wording: ResumeWording, sources: Sequence[SourceBullet], profile: CandidateProfile
 ) -> list[UnsupportedClaim]:
     by_id = {source.id: source for source in sources}
-    returned = {bullet.id: bullet.text for bullet in wording.bullets}
+    problems: list[UnsupportedClaim] = []
 
-    problems: list[UnsupportedClaim] = [
-        UnsupportedClaim(
-            location=bullet_id,
-            kind="name",
-            token=bullet_id,
-            message="this line does not match anything in your record",
-        )
-        for bullet_id in returned
-        if bullet_id not in by_id
-    ]
+    for position, bullet in enumerate(wording.bullets):
+        location = ",".join(bullet.source_ids) or f"line {position + 1}"
+        cited = [by_id[source_id] for source_id in bullet.source_ids if source_id in by_id]
+        if not cited:
+            problems.append(
+                UnsupportedClaim(
+                    location=location,
+                    kind="name",
+                    token=location,
+                    message="this line does not match anything in your record",
+                )
+            )
+            continue
 
-    for source in sources:
-        text = returned.get(source.id)
-        if text is None:
-            continue  # a dropped line loses nothing that was not already the user's
+        # One line may join several things said about the same role; never two different roles.
+        belongs_to = {(source.kind, source.item_index) for source in cited}
+        if len(belongs_to) > 1:
+            problems.append(
+                UnsupportedClaim(
+                    location=location,
+                    kind="claim",
+                    token=location,
+                    message="this line mixes two different roles or projects into one",
+                )
+            )
+            continue
+
         problems.extend(
             check_text(
-                location=source.id,
-                rewritten=text,
-                sources=[source.text],
-                allowed_names=source.allowed_names,
+                location=location,
+                rewritten=bullet.text,
+                sources=[source.text for source in cited],
+                allowed_names=[name for source in cited for name in source.allowed_names],
             )
         )
+
+    # Merging may shorten a section; it may never make someone look like they did more.
+    available: dict[tuple[str, int], int] = {}
+    for source in sources:
+        available[(source.kind, source.item_index)] = (
+            available.get((source.kind, source.item_index), 0) + 1
+        )
+    written: dict[tuple[str, int], int] = {}
+    for bullet in wording.bullets:
+        cited = [by_id[source_id] for source_id in bullet.source_ids if source_id in by_id]
+        if cited:
+            key = (cited[0].kind, cited[0].item_index)
+            written[key] = written.get(key, 0) + 1
+    for key, count in written.items():
+        if count > available.get(key, 0):
+            problems.append(
+                UnsupportedClaim(
+                    location=f"{key[0]} {key[1] + 1}",
+                    kind="claim",
+                    token=key[0],
+                    message="this returns more lines than the record holds for that role",
+                )
+            )
 
     if wording.summary.strip():
         problems.extend(
@@ -296,7 +333,7 @@ def _assemble(
     blocked_items: frozenset[str],
 ) -> ResumeDocument:
     """Build the document: facts straight from the record, wording from the checked rewrites."""
-    rewritten = {bullet.id: bullet.text.strip() for bullet in wording.bullets}
+    rewritten = _written_lines(wording, sources)
 
     experience: list[ResumeExperience] = []
     for index, item in enumerate(items(profile.experience)):
@@ -349,27 +386,54 @@ def _assemble(
     )
 
 
+def _written_lines(
+    wording: ResumeWording, sources: Sequence[SourceBullet]
+) -> dict[tuple[str, int], list[Bullet]]:
+    """The checked lines, grouped by the item they belong to, in the order they were written.
+
+    Anything the model did not write about is kept in the person's own words rather than lost.
+    """
+    by_id = {source.id: source for source in sources}
+    grouped: dict[tuple[str, int], list[Bullet]] = {}
+    covered: set[str] = set()
+
+    for bullet in wording.bullets:
+        cited = [by_id[source_id] for source_id in bullet.source_ids if source_id in by_id]
+        if not cited:
+            continue
+        first = cited[0]
+        covered.update(source.id for source in cited)
+        grouped.setdefault((first.kind, first.item_index), []).append(
+            Bullet(
+                text=bullet.text.strip()[:500],
+                source_item_id=first.item_id,
+                source_bullet_index=first.bullet_index,
+                source_bullet_indexes=[source.bullet_index for source in cited],
+            )
+        )
+
+    for source in sources:
+        if source.id in covered:
+            continue
+        grouped.setdefault((source.kind, source.item_index), []).append(
+            Bullet(
+                text=source.text[:500],
+                source_item_id=source.item_id,
+                source_bullet_index=source.bullet_index,
+                source_bullet_indexes=[source.bullet_index],
+            )
+        )
+    return grouped
+
+
 def _bullets_for(
     sources: Sequence[SourceBullet],
-    rewritten: dict[str, str],
+    rewritten: dict[tuple[str, int], list[Bullet]],
     *,
     kind: str,
     item_index: int,
 ) -> list[Bullet]:
-    bullets: list[Bullet] = []
-    for source in sources:
-        if source.kind != kind or source.item_index != item_index:
-            continue
-        # No rewrite came back for this line: keep the user's own words rather than lose it.
-        text = rewritten.get(source.id) or source.text
-        bullets.append(
-            Bullet(
-                text=text[:500],
-                source_item_id=source.item_id,
-                source_bullet_index=source.bullet_index,
-            )
-        )
-    return bullets
+    return rewritten.get((kind, item_index), [])
 
 
 def _basics(profile: CandidateProfile) -> ResumeBasics:

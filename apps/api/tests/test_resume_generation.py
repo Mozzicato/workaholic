@@ -7,7 +7,7 @@ be supported is refused rather than saved, and that one account cannot reach ano
 
 import uuid
 from collections.abc import AsyncIterator, Sequence
-from typing import Any
+from typing import Any, ClassVar
 
 import httpx
 import pytest
@@ -105,11 +105,15 @@ PROFILE: dict[str, Any] = {
 
 FAITHFUL: dict[str, Any] = {
     "summary": "",
-    "bullets": [{"id": "e0.b0", "text": "Helped build the payouts reconciliation service"}],
+    "bullets": [
+        {"source_ids": ["e0.b0"], "text": "Helped build the payouts reconciliation service"}
+    ],
 }
 INVENTED: dict[str, Any] = {
     "summary": "",
-    "bullets": [{"id": "e0.b0", "text": "Owned payouts reconciliation, cutting errors by 40%"}],
+    "bullets": [
+        {"source_ids": ["e0.b0"], "text": "Owned payouts reconciliation, cutting errors by 40%"}
+    ],
 }
 
 
@@ -271,7 +275,9 @@ class TestGeneration:
         llm = ScriptedLLM(
             {
                 "summary": "",
-                "bullets": [{"id": "e0.b0", "text": "Wrote a lint rule to ignore generated files"}],
+                "bullets": [
+                    {"source_ids": ["e0.b0"], "text": "Wrote a lint rule to ignore generated files"}
+                ],
             }
         )
         profile = {
@@ -356,8 +362,11 @@ class TestGeneration:
             {
                 "summary": "",
                 "bullets": [
-                    {"id": "e0.b0", "text": "Helped build the payouts reconciliation service"},
-                    {"id": "p0.b0", "text": "Used by the whole campus"},
+                    {
+                        "source_ids": ["e0.b0"],
+                        "text": "Helped build the payouts reconciliation service",
+                    },
+                    {"source_ids": ["p0.b0"], "text": "Used by the whole campus"},
                 ],
             }
         )
@@ -477,3 +486,140 @@ class TestOwnership:
 
         assert response.status_code == 401
         assert llm.calls == []
+
+
+@pytest.mark.usefixtures("db_engine")
+class TestCombiningLines:
+    """Facts about the same work belong in one sentence.
+
+    "Fixed the bugs" and "40 staff used it daily" are one bullet on a resume and two rows in a
+    record. The writer may join them; what it may not do is join two different jobs, invent a
+    line, or make someone look like they did more than they wrote down.
+    """
+
+    TWO_LINES: ClassVar[dict[str, Any]] = {
+        **PROFILE,
+        "experience": [
+            {
+                "employer": "Paystack",
+                "title": "Backend Engineer",
+                "start_date": "2024-03",
+                "bullets": [
+                    "helped with the payouts reconciliation service",
+                    "about 40 staff used it every day",
+                ],
+                "technologies": ["Python"],
+            }
+        ],
+    }
+
+    async def test_two_things_said_about_one_job_become_one_line(
+        self, make_app: AppFactory, idp: FakeIdentityProvider
+    ) -> None:
+        merged = {
+            "summary": "",
+            "bullets": [
+                {
+                    "source_ids": ["e0.b0", "e0.b1"],
+                    "text": "Contributed to the payouts reconciliation service, used by about 40 "
+                    "staff every day",
+                }
+            ],
+        }
+        async with running(app_with(ScriptedLLM(merged), make_app)) as client:
+            headers = await sign_in(client, idp)
+            resume_id = await set_up_record(client, headers, profile=self.TWO_LINES)
+
+            response = await client.post(
+                f"/api/v1/resumes/{resume_id}/versions", headers=headers, json={}
+            )
+
+        assert response.status_code == 201, response.text
+        bullets = response.json()["content"]["experience"][0]["bullets"]
+        assert len(bullets) == 1
+        assert "40 staff" in bullets[0]["text"]
+        # Both of the things she said are still traceable from the line they became.
+        assert bullets[0]["source_bullet_indexes"] == [0, 1]
+
+    async def test_two_different_jobs_are_never_joined(
+        self, make_app: AppFactory, idp: FakeIdentityProvider
+    ) -> None:
+        profile = {
+            **PROFILE,
+            "experience": [
+                {"employer": "Paystack", "title": "Engineer", "bullets": ["wrote the payouts job"]},
+                {"employer": "Andela", "title": "Intern", "bullets": ["fixed the dashboard"]},
+            ],
+        }
+        crossed = {
+            "summary": "",
+            "bullets": [
+                {
+                    "source_ids": ["e0.b0", "e1.b0"],
+                    "text": "Wrote the payouts job and fixed the dashboard",
+                }
+            ],
+        }
+        llm = ScriptedLLM(crossed, crossed)
+        async with running(app_with(llm, make_app)) as client:
+            headers = await sign_in(client, idp)
+            resume_id = await set_up_record(client, headers, profile=profile)
+
+            response = await client.post(
+                f"/api/v1/resumes/{resume_id}/versions", headers=headers, json={}
+            )
+
+        assert response.status_code == 422
+        assert response.json()["error"]["code"] == "GENERATION_BLOCKED"
+
+    async def test_it_cannot_return_more_lines_than_the_record_holds(
+        self, make_app: AppFactory, idp: FakeIdentityProvider
+    ) -> None:
+        """Splitting one thing into three makes a thin record look fat. That is inflation."""
+        padded = {
+            "summary": "",
+            "bullets": [
+                {
+                    "source_ids": ["e0.b0"],
+                    "text": "Helped build the payouts reconciliation service",
+                },
+                {"source_ids": ["e0.b0"], "text": "Worked on payouts reconciliation"},
+                {"source_ids": ["e0.b0"], "text": "Supported the reconciliation work"},
+            ],
+        }
+        llm = ScriptedLLM(padded, padded)
+        async with running(app_with(llm, make_app)) as client:
+            headers = await sign_in(client, idp)
+            resume_id = await set_up_record(client, headers)
+
+            response = await client.post(
+                f"/api/v1/resumes/{resume_id}/versions", headers=headers, json={}
+            )
+
+        assert response.status_code == 422
+        assert response.json()["error"]["code"] == "GENERATION_BLOCKED"
+
+    async def test_a_line_the_writer_ignored_is_kept_in_her_own_words(
+        self, make_app: AppFactory, idp: FakeIdentityProvider
+    ) -> None:
+        partial = {
+            "summary": "",
+            "bullets": [
+                {"source_ids": ["e0.b0"], "text": "Built the payouts reconciliation service"}
+            ],
+        }
+        async with running(app_with(ScriptedLLM(partial), make_app)) as client:
+            headers = await sign_in(client, idp)
+            resume_id = await set_up_record(client, headers, profile=self.TWO_LINES)
+
+            response = await client.post(
+                f"/api/v1/resumes/{resume_id}/versions", headers=headers, json={}
+            )
+
+        texts = [
+            bullet["text"] for bullet in response.json()["content"]["experience"][0]["bullets"]
+        ]
+        assert texts == [
+            "Built the payouts reconciliation service",
+            "about 40 staff used it every day",
+        ]

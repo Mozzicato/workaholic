@@ -47,11 +47,17 @@ class ResumeLink(DocumentModel):
 
 
 class Bullet(DocumentModel):
-    """One line of a resume, and the profile text it was written from."""
+    """One line of a resume, and the profile text it was written from.
+
+    A line may draw on more than one thing the person said — "fixed the bugs" and "40 staff used
+    it daily" belong in one sentence — so `source_bullet_indexes` lists every line it came from.
+    `source_bullet_index` is the first of them, and is what documents written before merging have.
+    """
 
     text: str = Field(min_length=1, max_length=500)
     source_item_id: str = Field(min_length=1, max_length=36)
     source_bullet_index: int = Field(ge=0)
+    source_bullet_indexes: list[int] = Field(default_factory=list, max_length=20)
 
 
 class ResumeExperience(DocumentModel):
