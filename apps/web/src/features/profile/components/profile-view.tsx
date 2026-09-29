@@ -6,6 +6,7 @@ import { useProfile } from "@/features/profile/hooks";
 
 import { BasicsForm } from "./basics-form";
 import { EducationSection } from "./education-section";
+import { GenerateFromProfile } from "./generate-from-profile";
 import { ExperienceSection } from "./experience-section";
 import { ImportSection } from "./import-section";
 import { ProjectsSection } from "./projects-section";
@@ -36,6 +37,7 @@ export function ProfileView() {
         </p>
       </header>
 
+      <GenerateFromProfile />
       <ImportSection />
       <BasicsForm basics={profile.data.basics} />
       <EducationSection education={profile.data.education} />

@@ -57,7 +57,13 @@ the model failed and it is asking you to repeat rather than losing your answer s
 
 ## 3. Now write the resume, and judge the writing
 
-**Resumes → Create → pick a template → Write my resume.**
+**Stay on the Profile page — "Generate my resume" is at the top of it.** You do not need the
+resumes page. It asks what the resume is for:
+
+- **A general resume** — covers everything you have.
+- **For a specific job** — paste the advert; it writes, then leads with what that job asks for.
+
+If your record is not ready, the button is disabled and it tells you what is missing instead.
 
 What "i fixed bugs in the internal staff dashboard" plus your number should become:
 
