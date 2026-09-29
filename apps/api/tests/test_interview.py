@@ -777,3 +777,38 @@ class TestSharpening:
             "i fixed bugs in the internal staff dashboard"
         ]
         assert turn.json()["reply"]["content"] != started["messages"][0]["content"]
+
+
+@pytest.mark.usefixtures("db_engine")
+class TestWhenTheModelFails:
+    async def test_an_answer_is_never_lost_quietly(
+        self, make_app: AppFactory, idp: FakeIdentityProvider
+    ) -> None:
+        """Found in production: one failed extraction and her answer vanished without a word.
+
+        She would have carried on believing the number was written down.
+        """
+
+        class Failing(Scripted):
+            async def structured_output(self, messages: Any, schema: Any, **kwargs: Any) -> Any:
+                from app.services.ai.errors import AIUnavailableError
+
+                raise AIUnavailableError
+
+        llm = Failing(questions=["What did you do there?"])
+        async with running(app_with(llm, make_app)) as client:
+            headers = await sign_in(client, idp)
+            started = await start(client, headers)
+            asked = started["messages"][0]["content"]
+
+            turn = await answer(
+                client, headers, started["session"]["id"], "about 40 staff used it every day"
+            )
+
+        assert turn.status_code == 201
+        body = turn.json()
+        assert "did not get that written down" in body["reply"]["content"]
+        assert body["completed"] is False
+        assert body["recorded"] == []
+        # The same ground is still to be covered: it did not move on as if it had heard her.
+        assert body["reply"]["content"] != asked

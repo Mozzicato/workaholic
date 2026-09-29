@@ -623,3 +623,44 @@ class TestCombiningLines:
             "Built the payouts reconciliation service",
             "about 40 staff used it every day",
         ]
+
+    async def test_it_cannot_cram_everything_into_one_line(
+        self, make_app: AppFactory, idp: FakeIdentityProvider
+    ) -> None:
+        """Three different jobs joined by semicolons is a list, not a resume bullet."""
+        profile = {
+            **PROFILE,
+            "experience": [
+                {
+                    "employer": "Paystack",
+                    "title": "Backend Engineer",
+                    "bullets": [
+                        "fixed bugs in the dashboard",
+                        "added a filter to the reports page",
+                        "wrote the onboarding notes",
+                        "about 40 staff used it every day",
+                    ],
+                }
+            ],
+        }
+        crammed = {
+            "summary": "",
+            "bullets": [
+                {
+                    "source_ids": ["e0.b0", "e0.b1", "e0.b2", "e0.b3"],
+                    "text": "Fixed bugs in the dashboard; added a filter to the reports page; "
+                    "wrote the onboarding notes; about 40 staff used it every day",
+                }
+            ],
+        }
+        llm = ScriptedLLM(crammed, crammed)
+        async with running(app_with(llm, make_app)) as client:
+            headers = await sign_in(client, idp)
+            resume_id = await set_up_record(client, headers, profile=profile)
+
+            response = await client.post(
+                f"/api/v1/resumes/{resume_id}/versions", headers=headers, json={}
+            )
+
+        assert response.status_code == 422
+        assert response.json()["error"]["code"] == "GENERATION_BLOCKED"

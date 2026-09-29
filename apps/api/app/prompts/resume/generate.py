@@ -61,6 +61,11 @@ single strong sentence — what they did, and what it did for the people who use
 every line id it came from in `source_ids`. Facts about the same work belong together: "fixed \
 the bugs" and "40 staff used it daily" are one sentence, not two.
 
+Only combine lines about the *same* piece of work — the thing they built and what it did for \
+the people who used it. Different pieces of work stay in different bullets: fixing a dashboard, \
+building a filter and writing documentation are three things, not one sentence with semicolons \
+in it. Two lines is the usual merge; three is the most you may ever join.
+
 Rules for combining: never join lines from different roles or projects; never return more lines \
 for a role than you were given for it; use every line at least once; keep each under 300 \
 characters, and keep the strongest line first.

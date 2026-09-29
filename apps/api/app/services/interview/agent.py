@@ -153,6 +153,11 @@ _CLOSING_INCOMPLETE = (
     "{missing}. You can add them on your profile page, or start a new conversation with me."
 )
 
+_COULD_NOT_HEAR = (
+    "Sorry — something went wrong on my side and I did not get that written down. "
+    "Could you say it again?"
+)
+
 _NOT_A_FACT = (
     "I can only record what you actually did, in your own words. Tell me what happened and I'll "
     "write it down plainly."
@@ -164,6 +169,14 @@ class InterviewClosedError(AppError):
         super().__init__(
             ErrorCode.CONFLICT, "This interview has already finished. Start a new one.", 409
         )
+
+
+@dataclass(frozen=True, slots=True)
+class _Extraction:
+    """What the model made of an answer, and whether it managed to answer at all."""
+
+    facts: ExtractedFacts | None
+    failed: bool
 
 
 @dataclass(frozen=True, slots=True)
@@ -263,7 +276,15 @@ class InterviewService:
         dropped: list[str] = []
 
         if gap is not None and answer:
-            facts = await self._extract(last_question, answer, gap)
+            extraction = await self._extract(last_question, answer, gap)
+            if extraction.failed:
+                # Losing what somebody just said, quietly, is worse than asking them to repeat it:
+                # they would carry on believing it was written down.
+                reply = await self._add_message(session, InterviewRole.AGENT, _COULD_NOT_HEAR, gap)
+                await self._session.commit()
+                await self._session.refresh(session)
+                return TurnResult(session, [], [], reply, completed=False)
+            facts = extraction.facts
             if facts is not None:
                 grounded = ground(facts, answer)
                 grounded.dropped = _only_new(grounded.dropped, profile)
@@ -361,9 +382,9 @@ class InterviewService:
 
     async def _extract(
         self, question: InterviewMessage | None, answer: str, gap: Gap
-    ) -> ExtractedFacts | None:
+    ) -> _Extraction:
         if self._llm is None:
-            return None
+            return _Extraction(facts=None, failed=False)
         context = ExtractContext(
             question=question.content if question else "",
             answer=answer,
@@ -375,10 +396,9 @@ class InterviewService:
                 build_extract_messages(context), ExtractedFacts, operation="interview.extract"
             )
         except AIError:
-            # The turn still counts: the answer is stored, and a later pass can extract from it.
             logger.warning("interview.extract.unavailable")
-            return None
-        return result.value
+            return _Extraction(facts=None, failed=True)
+        return _Extraction(facts=result.value, failed=False)
 
     async def _compose_question(
         self,

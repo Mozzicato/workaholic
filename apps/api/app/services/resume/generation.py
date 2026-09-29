@@ -121,6 +121,11 @@ class GenerationBlockedError(AppError):
         )
 
 
+MAX_SOURCES_PER_LINE = 3
+"""A bullet is one piece of work and what came of it. More than three lines in one sentence is
+a list, and it reads like one."""
+
+
 class RewrittenBullet(BaseModel):
     """One written line, and the ids of the things the person said that it draws on."""
 
@@ -264,6 +269,17 @@ def _check_wording(
                     kind="name",
                     token=location,
                     message="this line does not match anything in your record",
+                )
+            )
+            continue
+
+        if len(cited) > MAX_SOURCES_PER_LINE:
+            problems.append(
+                UnsupportedClaim(
+                    location=location,
+                    kind="claim",
+                    token=location,
+                    message="this line crams together too many different things",
                 )
             )
             continue
