@@ -9,6 +9,12 @@ are and how to reach you, where you studied, then what you have done — experie
 projects, what you did before what you used. Within the work, it keeps the priority order in PRD
 §24. A gap for an item the user has already been asked about is skipped, so the interview moves
 on instead of nagging.
+
+The last topics are different in kind. Once the record holds everything a resume needs, the
+questions turn to *impact*: how many, how often, what it was like before, who ended up using it.
+Most people have those answers and never think to give them — and that is exactly the difference
+between "helped with the invoice job" and a bullet that gets an interview. Asking is the only
+honest way to get them.
 """
 
 import re
@@ -43,6 +49,10 @@ class Topic(IntEnum):
     PROJECT_OUTCOME = 11
     SKILLS = 12
     CERTIFICATIONS = 13
+    # Sharpening, once the record is complete: the facts that make a bullet land.
+    IMPACT_SCALE = 14  # nothing says how big, how many or how often
+    IMPACT_CHANGE = 15  # something was changed, but not what it was like before
+    IMPACT_REACH = 16  # nothing says who ended up using it
 
 
 @dataclass(frozen=True, slots=True)
@@ -58,6 +68,99 @@ class Gap:
     def key(self) -> str:
         """Identifies the gap across turns, so the same one is not asked twice."""
         return f"{self.topic.name.lower()}:{self.item_id or '-'}"
+
+
+# A number, spelled out or in digits: the thing most student bullets are missing.
+_NUMBER = re.compile(r"\d")
+_NUMBER_WORDS = re.compile(
+    r"\b(zero|none|one|two|three|four|five|six|seven|eight|nine|ten|dozen|hundred|thousand|"
+    r"million|once|twice|daily|weekly|monthly|every)\b",
+    re.I,
+)
+# Language that compares a before with an after.
+_CHANGE_WORDS = re.compile(
+    r"\b(before|previously|used to|instead of|after|from|now|first|no longer|stopped|"
+    r"faster|slower|quicker|longer|shorter|less|more|down to|up to)\b",
+    re.I,
+)
+# Work done *to* something that already existed. Asking what a bus tracker was like before it
+# was built is a silly question; asking what the import job was like before it was fixed is the
+# best question on the page.
+_CHANGE_TRIGGER = re.compile(
+    r"\b(fix|fixed|fixing|change|changed|rebuil|rewr|refactor|improv|optimis|optimiz|speed|"
+    r"sped|reduc|cut|migrat|replac|automat|streamlin|solv|debug|updat|upgrad|clean)\w*\b",
+    re.I,
+)
+
+# Language that says somebody other than the author touched it.
+_REACH_WORDS = re.compile(
+    r"\b(used|users|people|students|staff|team|colleagues|customers|clients|downloads|"
+    r"installs|visits|signed up|adopted|shared|shipped|released|published|live)\b",
+    re.I,
+)
+
+MAX_IMPACT_QUESTIONS_PER_ITEM = 2
+"""Two per role or project. More than that is an interrogation people abandon."""
+
+MAX_IMPACT_QUESTIONS_PER_CONVERSATION = 6
+"""And six in one sitting. There is always another number to ask for; a conversation with no
+end is one nobody finishes, and whatever is left keeps until the next one."""
+
+
+def _impact_gaps(item: dict[str, Any], item_id: str, subject: str, kind: str) -> list[Gap]:
+    """What this item does not yet say about its own impact, most valuable first.
+
+    Only for items that already describe something: there is nothing to sharpen about a role
+    with no lines under it, and `EXPERIENCE_DETAIL` asks about that first.
+    """
+    lines = _strings(item.get("bullets")) + _strings(item.get("outcomes"))
+    description = _text(item.get("description"))
+    if description:
+        lines = [description, *lines]
+    if not lines:
+        return []
+
+    said = " ".join(lines)
+    quoted = _quote(lines[0])
+    gaps: list[Gap] = []
+
+    if not _NUMBER.search(said) and not _NUMBER_WORDS.search(said):
+        gaps.append(
+            Gap(
+                topic=Topic.IMPACT_SCALE,
+                item_id=item_id,
+                subject=subject,
+                missing=(
+                    f"nothing here says how big or how often: they said {quoted}, with no number "
+                    "anywhere — how many people, how many times, how much data, how long it took"
+                ),
+            )
+        )
+    if _CHANGE_TRIGGER.search(said) and not _CHANGE_WORDS.search(said):
+        gaps.append(
+            Gap(
+                topic=Topic.IMPACT_CHANGE,
+                item_id=item_id,
+                subject=subject,
+                missing=(
+                    f"they said {quoted} but not what it was like before they did it, so there is "
+                    "nothing to compare the result against"
+                ),
+            )
+        )
+    if not _REACH_WORDS.search(said):
+        gaps.append(
+            Gap(
+                topic=Topic.IMPACT_REACH,
+                item_id=item_id,
+                subject=subject,
+                missing=(
+                    f"nothing says who ended up using this {kind} or what happened to it "
+                    f"afterwards: they said {quoted}"
+                ),
+            )
+        )
+    return gaps[:MAX_IMPACT_QUESTIONS_PER_ITEM]
 
 
 def open_gaps(profile: Any, asked: Sequence[str] = ()) -> list[Gap]:
@@ -217,6 +320,21 @@ def open_gaps(profile: Any, asked: Sequence[str] = ()) -> list[Gap]:
                 missing="no certification or licence is recorded",
             )
         )
+
+    # Sharpening comes last, so a record is complete before anyone is asked to quantify it, and
+    # stops after a few: the rest keep until the next conversation.
+    if sum(1 for key in asked if key.startswith("impact_")) < MAX_IMPACT_QUESTIONS_PER_CONVERSATION:
+        for index, role in enumerate(experience):
+            gaps.extend(_impact_gaps(role, _identifier(role, index), _role_label(role), "work"))
+        for index, project in enumerate(projects):
+            gaps.extend(
+                _impact_gaps(
+                    project,
+                    _identifier(project, index),
+                    _text(project.get("name")) or "their project",
+                    "project",
+                )
+            )
 
     already = set(asked)
     return sorted(

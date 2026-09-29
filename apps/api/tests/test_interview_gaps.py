@@ -4,7 +4,7 @@ This is deliberately model-free: the subject of every question is decided from t
 these tests pin the interview's behaviour without a model in sight.
 """
 
-from typing import Any
+from typing import Any, ClassVar
 
 from app.services.interview.gaps import Topic, next_gap, open_gaps
 
@@ -142,8 +142,16 @@ class TestNotRepeatingYourself:
         assert second.key != first.key
 
     def test_the_interview_ends_when_nothing_is_left(self) -> None:
+        """Nothing left means the lines already say how many, what changed, and who used it."""
         profile = Profile(
-            experience=[{**ROLE, "bullets": ["cut import failures to zero"]}],
+            experience=[
+                {
+                    **ROLE,
+                    "bullets": [
+                        "cut nightly import failures from twice a week to zero for the ops team"
+                    ],
+                }
+            ],
             projects=[
                 {
                     "id": "p1",
@@ -181,3 +189,73 @@ class TestRobustness:
 
         assert gap is not None
         assert gap.item_id == "index-0"
+
+
+class TestSharpening:
+    """Once the record is complete, the questions turn to impact: how many, before, who used it.
+
+    This is where a resume is won: most people have these answers and never think to give them.
+    """
+
+    FULL: ClassVar[dict[str, Any]] = {
+        "id": "r1",
+        "employer": "Andela",
+        "title": "Frontend Intern",
+        "bullets": ["i fixed bugs in the internal staff dashboard"],
+        "technologies": ["React"],
+    }
+
+    def test_impact_is_asked_only_after_the_record_is_complete(self) -> None:
+        """Quantifying comes after the record exists: name and school first, numbers later."""
+        topics = [gap.topic for gap in open_gaps(Profile(**NOBODY_YET, experience=[self.FULL]))]
+
+        impact = [topic for topic in topics if topic.name.startswith("IMPACT")]
+        assert impact, "a vague bullet should still be sharpened eventually"
+        assert topics.index(Topic.NAME) < topics.index(impact[0])
+        assert topics.index(Topic.EDUCATION) < topics.index(impact[0])
+
+    def test_a_bullet_with_no_number_is_asked_for_one(self) -> None:
+        gaps = open_gaps(Profile(experience=[self.FULL], skills=[{"name": "React"}]))
+
+        scale = next(gap for gap in gaps if gap.topic is Topic.IMPACT_SCALE)
+        assert scale.item_id == "r1"
+        assert scale.subject == "Frontend Intern at Andela"
+        assert "i fixed bugs in the internal staff dashboard" in scale.missing
+
+    def test_a_bullet_that_already_has_a_number_is_left_alone(self) -> None:
+        role = {**self.FULL, "bullets": ["fixed 14 bugs in the staff dashboard"]}
+
+        topics = [gap.topic for gap in open_gaps(Profile(experience=[role]))]
+
+        assert Topic.IMPACT_SCALE not in topics
+
+    def test_a_bullet_that_says_who_used_it_is_not_asked_who_used_it(self) -> None:
+        project = {
+            "id": "p1",
+            "name": "Bus tracker",
+            "description": "shows the shuttle",
+            "outcomes": ["40 students used it in the first week"],
+            "technologies": ["TypeScript"],
+        }
+
+        topics = [gap.topic for gap in open_gaps(Profile(projects=[project]))]
+
+        assert Topic.IMPACT_REACH not in topics
+        assert Topic.IMPACT_SCALE not in topics
+
+    def test_no_more_than_two_questions_about_any_one_item(self) -> None:
+        """Three questions per role is an interrogation people abandon."""
+        gaps = open_gaps(Profile(experience=[self.FULL]))
+
+        about_the_role = [
+            gap for gap in gaps if gap.item_id == "r1" and gap.topic >= Topic.IMPACT_SCALE
+        ]
+        assert len(about_the_role) == 2
+
+    def test_an_empty_role_is_asked_what_they_did_first_not_how_many(self) -> None:
+        bare = {"id": "r1", "employer": "Andela", "title": "Intern", "bullets": []}
+
+        topics = [gap.topic for gap in open_gaps(Profile(experience=[bare]))]
+
+        assert Topic.EXPERIENCE_DETAIL in topics
+        assert not [topic for topic in topics if topic.name.startswith("IMPACT")]

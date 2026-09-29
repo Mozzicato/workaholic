@@ -6,7 +6,7 @@ when there is no model at all.
 """
 
 import uuid
-from typing import Any
+from typing import Any, ClassVar
 
 import httpx
 import pytest
@@ -355,7 +355,9 @@ class TestQuestions:
                 {
                     "employer": "Lumen Freight",
                     "title": "Intern",
-                    "bullets": ["cut invoice import failures to zero"],
+                    "bullets": [
+                        "cut invoice import failures from twice a week to zero for the ops team"
+                    ],
                     "technologies": ["Python"],
                 }
             ],
@@ -659,3 +661,119 @@ class TestCertifications:
         assert turn.json()["recorded"] == ["AZ-900"]
         assert profile.status_code == 200
         assert profile.json()["certifications"][0]["start_date"] == "2025"
+
+
+@pytest.mark.usefixtures("db_engine")
+class TestSharpening:
+    """The pass that turns "i fixed bugs" into something worth reading."""
+
+    RECORD: ClassVar[dict[str, Any]] = {
+        "basics": {"full_name": "Ifeoma Chukwu", "email": "ifeoma@example.com"},
+        "education": [{"institution": "University of Lagos", "grade": "4.31/5"}],
+        "experience": [
+            {
+                "employer": "Andela",
+                "title": "Frontend Intern",
+                "bullets": ["i fixed bugs in the internal staff dashboard"],
+                "technologies": ["React"],
+            }
+        ],
+        "projects": [
+            {
+                "name": "Lecture Reminder Bot",
+                "description": "sends students their timetable each morning",
+                "outcomes": ["60 students used it every day last semester"],
+                "technologies": ["Python"],
+            }
+        ],
+        "skills": [{"name": "React"}],
+        "certifications": [{"name": "AZ-900"}],
+    }
+
+    async def test_it_asks_for_a_number_and_records_the_answer_on_that_role(
+        self, make_app: AppFactory, idp: FakeIdentityProvider
+    ) -> None:
+        llm = Scripted(
+            facts(outcomes=["about 40 staff used the dashboard every day"]),
+            questions=["Roughly how many people used that dashboard?"],
+        )
+        async with running(app_with(llm, make_app)) as client:
+            headers = await bare_sign_in(client, idp)
+            await client.patch("/api/v1/profile", headers=headers, json=self.RECORD)
+            started = await start(client, headers)
+
+            turn = await answer(
+                client,
+                headers,
+                started["session"]["id"],
+                "about 40 staff used the dashboard every day",
+            )
+            profile = (await client.get("/api/v1/profile", headers=headers)).json()
+            evidence = (await client.get("/api/v1/evidence", headers=headers)).json()
+
+        assert "how many" in started["messages"][0]["content"].lower()
+        assert turn.json()["recorded"] == [
+            "what changed: about 40 staff used the dashboard every day"
+        ]
+        assert profile["experience"][0]["bullets"] == [
+            "i fixed bugs in the internal staff dashboard",
+            "about 40 staff used the dashboard every day",
+        ]
+        assert {item["section"] for item in evidence} == {"experience"}
+
+    async def test_an_answer_about_a_project_lands_on_the_project(
+        self, make_app: AppFactory, idp: FakeIdentityProvider
+    ) -> None:
+        record = {
+            **self.RECORD,
+            "experience": [],
+            "projects": [
+                {
+                    "name": "Lecture Reminder Bot",
+                    "description": "sends students their timetable each morning",
+                    "technologies": ["Python"],
+                }
+            ],
+        }
+        llm = Scripted(
+            facts(usable=False),
+            facts(outcomes=["60 students used it last semester"]),
+        )
+        async with running(app_with(llm, make_app)) as client:
+            headers = await bare_sign_in(client, idp)
+            await client.patch("/api/v1/profile", headers=headers, json=record)
+            # Work first, then the project is sharpened.
+            started = await start(client, headers)
+            said = await answer(
+                client, headers, started["session"]["id"], "no, I have not had a job yet"
+            )
+            follow_up = await answer(
+                client, headers, started["session"]["id"], "60 students used it last semester"
+            )
+            profile = (await client.get("/api/v1/profile", headers=headers)).json()
+            evidence = (await client.get("/api/v1/evidence", headers=headers)).json()
+
+        assert said.status_code == follow_up.status_code == 201
+        assert profile["projects"][0]["outcomes"] == ["60 students used it last semester"]
+        assert profile["experience"] == []
+        assert {item["section"] for item in evidence} == {"projects"}
+
+    async def test_not_remembering_a_number_records_nothing_and_moves_on(
+        self, make_app: AppFactory, idp: FakeIdentityProvider
+    ) -> None:
+        llm = Scripted(facts(usable=False))
+        async with running(app_with(llm, make_app)) as client:
+            headers = await bare_sign_in(client, idp)
+            await client.patch("/api/v1/profile", headers=headers, json=self.RECORD)
+            started = await start(client, headers)
+
+            turn = await answer(
+                client, headers, started["session"]["id"], "I honestly cannot remember"
+            )
+            profile = (await client.get("/api/v1/profile", headers=headers)).json()
+
+        assert turn.json()["recorded"] == []
+        assert profile["experience"][0]["bullets"] == [
+            "i fixed bugs in the internal staff dashboard"
+        ]
+        assert turn.json()["reply"]["content"] != started["messages"][0]["content"]

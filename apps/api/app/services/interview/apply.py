@@ -11,6 +11,8 @@ from typing import Any
 from app.services.interview.extraction import GroundedFacts
 from app.services.interview.gaps import Gap, Topic
 
+_IMPACT_TOPICS = frozenset({Topic.IMPACT_SCALE, Topic.IMPACT_CHANGE, Topic.IMPACT_REACH})
+
 __all__ = ["Applied", "apply_basics", "apply_facts"]
 
 
@@ -20,6 +22,9 @@ class Applied:
     def __init__(self) -> None:
         self.notes: list[str] = []
         self.item_id: str | None = None
+        # Which section was written to, when the topic alone does not say (an impact answer can
+        # land on a role or on a project).
+        self.section: str | None = None
 
     def note(self, text: str) -> None:
         self.notes.append(text)
@@ -65,6 +70,25 @@ def apply_facts(
     applied = Applied()
     experience = sections.setdefault("experience", [])
     projects = sections.setdefault("projects", [])
+
+    # Sharpening: a number, a before-and-after, or who used it, against the item it was asked about.
+    if gap.topic in _IMPACT_TOPICS:
+        role = _find(experience, gap.item_id)
+        if role is not None:
+            _extend(role, "bullets", facts.outcomes or facts.bullets, applied, "what changed")
+            _extend(role, "technologies", _tools(facts.technologies), applied, "tools")
+            applied.item_id = _identity(role)
+            applied.section = "experience"
+            return applied
+        project = _find(projects, gap.item_id)
+        if project is not None:
+            _extend(
+                project, "outcomes", facts.outcomes or facts.bullets, applied, "what came of it"
+            )
+            _extend(project, "technologies", _tools(facts.technologies), applied, "tools")
+            applied.item_id = _identity(project)
+            applied.section = "projects"
+            return applied
 
     if gap.topic in (Topic.EXPERIENCE_DETAIL, Topic.EXPERIENCE_OUTCOME):
         role = _find(experience, gap.item_id)

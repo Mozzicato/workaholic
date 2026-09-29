@@ -44,7 +44,7 @@ from app.repositories.interview import InterviewRepository
 from app.services.ai.base import LLMProvider
 from app.services.ai.errors import AIError
 from app.services.candidate import CandidateProfileService
-from app.services.interview.apply import apply_basics, apply_facts
+from app.services.interview.apply import Applied, apply_basics, apply_facts
 from app.services.interview.extraction import ExtractedFacts, ground
 from app.services.interview.gaps import Gap, Topic, next_gap
 from app.services.resume.readiness import assess_readiness
@@ -91,6 +91,14 @@ _PLAIN_QUESTIONS: dict[Topic, str] = {
     Topic.PROJECT_DETAIL: "What does {subject} do, and why did you build it?",
     Topic.PROJECT_OUTCOME: "Did anyone use {subject}, and what came of it?",
     Topic.SKILLS: "Which skills would you be comfortable being asked about in an interview?",
+    Topic.IMPACT_SCALE: (
+        "About {subject}: can you put a number on any of it? How many people, how many times, "
+        "how much data, how long it took — whatever you actually remember."
+    ),
+    Topic.IMPACT_CHANGE: (
+        "About {subject}: what was it like before you did that, and what was it like after?"
+    ),
+    Topic.IMPACT_REACH: "About {subject}: who ended up using it, and what happened to it after?",
     Topic.CERTIFICATIONS: "Do you have any certifications or licences?",
 }
 
@@ -106,6 +114,12 @@ _EXPECTING: dict[Topic, str] = {
     Topic.PROJECT_DETAIL: "what the project is and does",
     Topic.PROJECT_OUTCOME: "who used it and what came of it",
     Topic.SKILLS: "skills they can back up",
+    Topic.IMPACT_SCALE: (
+        "a number they actually remember — people, times, size or duration. If they do not "
+        "remember one, that is fine and nothing should be recorded"
+    ),
+    Topic.IMPACT_CHANGE: "what it was like before, and what it was like afterwards",
+    Topic.IMPACT_REACH: "who used it, how many of them, and what came of it",
     Topic.EDUCATION: "the school they attend or attended, the course, and the qualification",
     Topic.CERTIFICATIONS: (
         "the name of a certification or licence in certification_name, and when it was issued "
@@ -277,7 +291,7 @@ class InterviewService:
                         self._record_evidence(
                             user=user,
                             profile=profile,
-                            section=_SECTION_FOR_TOPIC.get(gap.topic),
+                            section=_section_for(applied, gap),
                             applied_item_id=applied.item_id,
                             claims=recorded,
                             message_id=user_message.id,
@@ -453,6 +467,8 @@ class InterviewService:
         return message
 
 
+_SECTIONS = {section.value: section for section in ProfileSection}
+
 _SECTION_FOR_TOPIC: dict[Topic, ProfileSection] = {
     Topic.NAME: ProfileSection.BASICS,
     Topic.CONTACT: ProfileSection.BASICS,
@@ -467,6 +483,13 @@ _SECTION_FOR_TOPIC: dict[Topic, ProfileSection] = {
     Topic.EDUCATION: ProfileSection.EDUCATION,
     Topic.CERTIFICATIONS: ProfileSection.CERTIFICATIONS,
 }
+
+
+def _section_for(applied: Applied, gap: Gap) -> ProfileSection | None:
+    """Where the answer landed. An impact answer can go to a role or a project, so ask the write."""
+    if applied.section is not None:
+        return _SECTIONS.get(applied.section)
+    return _SECTION_FOR_TOPIC.get(gap.topic)
 
 
 def _closing(profile: CandidateProfile) -> str:

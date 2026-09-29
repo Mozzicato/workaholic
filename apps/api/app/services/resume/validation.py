@@ -10,9 +10,14 @@ Three things are checked against the source text:
   numbers count as their digits, so "two interns" may become "2 interns".
 * **Names.** Proper nouns, acronyms and tool names must already be in the material. A rewrite
   may not introduce "AWS" or "Paystack" on its own.
-* **Claims.** A small vocabulary of impact and seniority words — production, revenue, users,
-  led, owned — must be present in the source before a rewrite may use it. This is what stops
+* **Claims.** Two small vocabularies. *Authority* words (led, managed, owned) say the candidate
+  was in charge; *evidence* words (production, revenue, customers) say the work had a reach the
+  source never claimed. Either needs support before a rewrite may use it. This is what stops
   "helped with deployments" becoming "owned production deployments".
+
+Everything else is fair game. Strong verbs, industry phrasing and confident sentence structure
+are not claims — they are how a resume is meant to read, and a rewrite that says the same facts
+better is the whole point of this product.
 
 A failure is reported, not repaired: `app.services.resume.generation` retries once with the
 problems named, and blocks generation if they persist.
@@ -66,24 +71,13 @@ _NUMBER_WORDS = {
     "billion": "1000000000",
 }
 
-# Words that assert impact, scale or seniority. Allowed only where the source already says so.
-_CLAIM_WORDS = frozenset(
+# Who was in charge. A recruiter reads these as seniority, so the source has to say it.
+_AUTHORITY_WORDS = frozenset(
     {
         "architected",
-        "authored",
-        "award",
-        "awarded",
-        "certified",
-        "client",
-        "clients",
-        "customer",
-        "customers",
         "directed",
-        "downtime",
-        "enterprise",
         "founded",
         "headed",
-        "latency",
         "lead",
         "leading",
         "led",
@@ -91,13 +85,32 @@ _CLAIM_WORDS = frozenset(
         "managing",
         "mentored",
         "mentoring",
-        "nationwide",
         "owned",
         "owning",
         "ownership",
+        "pioneered",
+        "spearheaded",
+        "supervised",
+    }
+)
+
+# How far the work reached. These are facts about the work, not ways of describing it: a project
+# nobody used does not become one with customers because the sentence reads better.
+_EVIDENCE_WORDS = frozenset(
+    {
+        "award",
+        "awarded",
+        "certified",
+        "client",
+        "clients",
+        "customer",
+        "customers",
+        "downtime",
+        "enterprise",
+        "latency",
+        "nationwide",
         "patent",
         "patented",
-        "pioneered",
         "production",
         "profit",
         "profitability",
@@ -105,9 +118,7 @@ _CLAIM_WORDS = frozenset(
         "scalable",
         "scale",
         "scaled",
-        "spearheaded",
         "sla",
-        "supervised",
         "throughput",
         "uptime",
         "user",
@@ -116,40 +127,44 @@ _CLAIM_WORDS = frozenset(
     }
 )
 
-# Stems that make a claim word acceptable when the source uses a nearby form of it: the source
-# saying "leadership" licenses "led", and "scaling" licenses "scaled".
-_CLAIM_STEMS = {
-    "architected": "architect",
-    "authored": "author",
-    "awarded": "award",
-    "certified": "certif",
-    "client": "client",
-    "clients": "client",
-    "customer": "customer",
-    "customers": "customer",
-    "directed": "direct",
-    "founded": "found",
-    "headed": "head",
-    "lead": "lead",
-    "leading": "lead",
-    "led": "lead",
-    "managed": "manag",
-    "managing": "manag",
-    "mentored": "mentor",
-    "mentoring": "mentor",
-    "owned": "own",
-    "owning": "own",
-    "ownership": "own",
-    "patented": "patent",
-    "pioneered": "pioneer",
-    "profitability": "profit",
-    "scalable": "scal",
-    "scale": "scal",
-    "scaled": "scal",
-    "spearheaded": "spearhead",
-    "supervised": "supervis",
-    "user": "user",
-    "users": "user",
+_CLAIM_WORDS = _AUTHORITY_WORDS | _EVIDENCE_WORDS
+
+# Stems that make a claim word acceptable when the source uses a nearby form of it, or an
+# honest synonym: "leadership" licenses "led", "wrote the docs" licenses "authored", and
+# "60 students used it" licenses "users". Synonyms are only listed where the two words say the
+# same thing about the same work — never where one is a promotion of the other.
+_CLAIM_STEMS: dict[str, tuple[str, ...]] = {
+    "architected": ("architect",),
+    "awarded": ("award",),
+    "certified": ("certif",),
+    "client": ("client", "customer", "merchant"),
+    "clients": ("client", "customer", "merchant"),
+    "customer": ("customer", "client", "merchant", "buyer"),
+    "customers": ("customer", "client", "merchant", "buyer"),
+    "directed": ("direct",),
+    "founded": ("found", "start", "set up"),
+    "headed": ("head",),
+    "lead": ("lead",),
+    "leading": ("lead",),
+    "led": ("lead",),
+    "managed": ("manag",),
+    "managing": ("manag",),
+    "mentored": ("mentor", "taught", "teach", "tutor", "coach", "train"),
+    "mentoring": ("mentor", "taught", "teach", "tutor", "coach", "train"),
+    "owned": ("own",),
+    "owning": ("own",),
+    "ownership": ("own",),
+    "patented": ("patent",),
+    "pioneered": ("pioneer",),
+    "production": ("production", "live", "in use"),
+    "profitability": ("profit",),
+    "scalable": ("scal",),
+    "scale": ("scal",),
+    "scaled": ("scal",),
+    "spearheaded": ("spearhead",),
+    "supervised": ("supervis",),
+    "user": ("user", "use", "student", "customer", "staff", "people", "player", "reader"),
+    "users": ("user", "use", "student", "customer", "staff", "people", "player", "reader"),
 }
 
 
@@ -291,10 +306,10 @@ def _looks_like_a_name(token: str, text: str, start: int) -> bool:
 
 
 def _stem_present(word: str, source_words: set[str]) -> bool:
-    stem = _CLAIM_STEMS.get(word)
-    if stem is None:
+    stems = _CLAIM_STEMS.get(word)
+    if stems is None:
         return False
-    return any(source_word.startswith(stem) for source_word in source_words)
+    return any(source_word.startswith(stem) for stem in stems for source_word in source_words)
 
 
 def _normalise_number(raw: str) -> str:

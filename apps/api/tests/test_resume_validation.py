@@ -187,3 +187,71 @@ class TestInstructionDetection:
     )
     def test_an_honest_line_is_left_alone(self, line: str) -> None:
         assert find_instruction(line) is None
+
+
+class TestWritingStrongly:
+    """The product exists to make a true record read as well as it can. These are the lines that
+    must be allowed, or an honest candidate loses to a better-written one."""
+
+    def test_a_sharper_verb_is_not_a_claim(self) -> None:
+        source = ["i fixed bugs in the internal staff dashboard"]
+
+        assert not check_text(
+            location="b",
+            rewritten="Resolved defects across the internal staff dashboard",
+            sources=source,
+        )
+
+    def test_industry_phrasing_the_source_supports(self) -> None:
+        source = ["i added a filter to the reports page so staff could find old reports faster"]
+
+        assert not check_text(
+            location="b",
+            rewritten="Shipped a report filter that cut the time staff spent finding old reports",
+            sources=source,
+        )
+
+    def test_an_honest_synonym_is_allowed(self) -> None:
+        assert not check_text(
+            location="b",
+            rewritten="Authored the onboarding notes the next intern group used",
+            sources=["I wrote the onboarding notes the next interns used"],
+        )
+
+    def test_students_who_used_it_are_users(self) -> None:
+        assert not check_text(
+            location="b",
+            rewritten="Built a timetable bot with 60 student users",
+            sources=["i built a bot, about 60 students used it"],
+        )
+
+    def test_helping_does_not_become_leading(self) -> None:
+        problems = check_text(
+            location="b",
+            rewritten="Led the dashboard rebuild",
+            sources=["i helped rebuild the dashboard"],
+        )
+
+        assert [problem.kind for problem in problems] == ["claim"]
+
+    def test_reach_the_source_never_claimed(self) -> None:
+        problems = check_text(
+            location="b",
+            rewritten="Deployed the service to production for enterprise customers",
+            sources=["i deployed the service"],
+        )
+
+        assert {problem.token.lower() for problem in problems} == {
+            "production",
+            "enterprise",
+            "customers",
+        }
+
+    def test_a_number_still_cannot_be_invented(self) -> None:
+        problems = check_text(
+            location="b",
+            rewritten="Cut report lookup time by 40%",
+            sources=["staff could find reports faster"],
+        )
+
+        assert [problem.kind for problem in problems] == ["number"]
