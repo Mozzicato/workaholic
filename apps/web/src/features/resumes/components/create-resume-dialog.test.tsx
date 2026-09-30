@@ -117,21 +117,41 @@ describe("CreateResumeDialog", () => {
     expect(screen.getByRole("button", { name: "Answer a few questions" })).toBeInTheDocument();
   });
 
-  it("creates a cover letter and takes them where the advert is asked for", async () => {
+  it("asks a letter who it is for, and writes it there and then", async () => {
     api();
     const user = await openDialog();
 
     await user.click(screen.getByRole("button", { name: /Cover letter/ }));
-    await user.type(await screen.findByLabelText("Name it"), "Northwind letter");
-    await user.click(screen.getByRole("button", { name: "Create letter" }));
+    await user.type(await screen.findByLabelText("Company"), "Northwind Payments");
+    await user.type(screen.getByLabelText("Role (optional)"), "Junior Frontend Engineer");
+    await user.type(
+      screen.getByLabelText("Paste the job advert (optional)"),
+      "We want a junior frontend engineer comfortable with React and TypeScript.",
+    );
+    await user.click(screen.getByRole("button", { name: "Write my letter" }));
 
     await vi.waitFor(() => expect(router.push).toHaveBeenCalledWith(`/resumes/${RESUME_ID}`));
     expect(calls("POST", "/api/v1/resumes")[0][1].body).toMatchObject({
-      title: "Northwind letter",
+      title: "Northwind Payments letter",
       document_type: "cover_letter",
+      target_role: "Junior Frontend Engineer",
     });
-    // A letter is written on its own page, where the company and advert are asked for.
-    expect(calls("POST", `/resumes/${RESUME_ID}/versions`)).toHaveLength(0);
+    // Written immediately, with the advert deciding what leads.
+    const written = calls("POST", `/resumes/${RESUME_ID}/versions`);
+    expect(written).toHaveLength(1);
+    expect(written[0][1].body.brief).toMatchObject({ company: "Northwind Payments" });
+    // The advert is kept as a job, so matching and coaching come with it.
+    expect(calls("POST", "/api/v1/jobs")).toHaveLength(1);
+  });
+
+  it("will not write a letter without knowing who it is to", async () => {
+    api();
+    const user = await openDialog();
+
+    await user.click(screen.getByRole("button", { name: /Cover letter/ }));
+
+    expect(await screen.findByLabelText("Company")).toHaveValue("");
+    expect(screen.getByRole("button", { name: "Write my letter" })).toBeDisabled();
   });
 
   it("does not tailor from a couple of words", async () => {

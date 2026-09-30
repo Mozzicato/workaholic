@@ -15,13 +15,10 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
-import { Field, FieldDescription, FieldLabel } from "@/components/ui/field";
-import { Input } from "@/components/ui/input";
 import { Spinner } from "@/components/ui/spinner";
 import { ReadinessChecklist } from "@/features/profile/components/readiness-checklist";
 import { useReadiness } from "@/features/profile/hooks";
 import type { DocumentType } from "@/features/resumes/api";
-import { useCreateResume } from "@/features/resumes/hooks";
 import { templateInfo } from "@/features/resumes/templates";
 import { errorMessage } from "@/lib/api/errors";
 import { routes } from "@/lib/routes";
@@ -30,8 +27,12 @@ import { cn } from "@/lib/utils";
 import {
   BLANK,
   describes,
+  LetterFields,
+  NO_LETTER,
   PurposeChooser,
   useWriteDocument,
+  useWriteLetter,
+  type LetterDetails,
   type NewDocument,
 } from "./new-document";
 import { TemplateGallery } from "./template-gallery";
@@ -50,11 +51,12 @@ export function CreateResumeDialog({ variant = "default" }: { variant?: "default
   const [open, setOpen] = useState(false);
   const [kind, setKind] = useState<DocumentType>("resume");
   const [document, setDocument] = useState<NewDocument>(BLANK);
-  const [letterTitle, setLetterTitle] = useState("");
+  const [letter, setLetter] = useState<LetterDetails>(NO_LETTER);
   const router = useRouter();
   const readiness = useReadiness();
-  const createResume = useCreateResume();
   const { write, step } = useWriteDocument();
+  const letters = useWriteLetter();
+  const busy = step ?? letters.step;
 
   const isLetter = kind === "cover_letter";
   const checking = readiness.isPending;
@@ -65,13 +67,9 @@ export function CreateResumeDialog({ variant = "default" }: { variant?: "default
   async function onSubmit() {
     try {
       if (isLetter) {
-        // A letter needs the company and the advert, which the document's own page asks for.
-        const letter = await createResume.mutateAsync({
-          title: letterTitle.trim() || "Cover letter",
-          document_type: "cover_letter",
-        });
+        const written = await letters.write(letter);
         setOpen(false);
-        router.push(routes.resume(letter.id));
+        router.push(routes.resume(written));
         return;
       }
       const resumeId = await write(document);
@@ -86,9 +84,12 @@ export function CreateResumeDialog({ variant = "default" }: { variant?: "default
     <Dialog
       open={open}
       onOpenChange={(next) => {
-        if (step) return;
+        if (busy) return;
         setOpen(next);
-        if (!next) setDocument(BLANK);
+        if (!next) {
+          setDocument(BLANK);
+          setLetter(NO_LETTER);
+        }
       }}
     >
       <DialogTrigger
@@ -150,20 +151,7 @@ export function CreateResumeDialog({ variant = "default" }: { variant?: "default
         ) : null}
 
         {isLetter ? (
-          <Field>
-            <FieldLabel htmlFor="letter_title">Name it</FieldLabel>
-            <Input
-              id="letter_title"
-              className="h-10"
-              value={letterTitle}
-              placeholder="Northwind letter"
-              maxLength={120}
-              onChange={(event) => setLetterTitle(event.target.value)}
-            />
-            <FieldDescription>
-              The company and the advert are asked for on the next page.
-            </FieldDescription>
-          </Field>
+          <LetterFields value={letter} onChange={setLetter} />
         ) : (
           <>
             <PurposeChooser value={document} onChange={setDocument} />
@@ -178,13 +166,18 @@ export function CreateResumeDialog({ variant = "default" }: { variant?: "default
           <Button
             size="lg"
             className="h-10"
-            disabled={Boolean(step) || !ready || checking || (!isLetter && !describes(document))}
+            disabled={
+              Boolean(busy) ||
+              !ready ||
+              checking ||
+              (isLetter ? !letter.company.trim() : !describes(document))
+            }
             onClick={() => void onSubmit()}
           >
-            {step ? <Spinner /> : <SparklesIcon aria-hidden="true" />}
-            {step ??
+            {busy ? <Spinner /> : <SparklesIcon aria-hidden="true" />}
+            {busy ??
               (isLetter
-                ? "Create letter"
+                ? "Write my letter"
                 : document.purpose === "general"
                   ? `Write it in ${templateInfo(document.template).name}`
                   : "Write it for this job")}

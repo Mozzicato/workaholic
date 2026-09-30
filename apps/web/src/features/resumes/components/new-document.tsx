@@ -38,6 +38,15 @@ export const BLANK: NewDocument = {
   advert: "",
 };
 
+export type LetterDetails = {
+  company: string;
+  role: string;
+  hiringManager: string;
+  advert: string;
+};
+
+export const NO_LETTER: LetterDetails = { company: "", role: "", hiringManager: "", advert: "" };
+
 /** Enough of an advert to be worth reading. A job title alone tailors nothing. */
 export const MIN_ADVERT = 40;
 
@@ -57,6 +66,57 @@ function titleFor(document: NewDocument): string {
  * Creates the resume, writes it, and — when it is for a job — leads with what that job asks for.
  * Returns the resume's id so the caller can open it.
  */
+export function useWriteLetter() {
+  const createResume = useCreateResume();
+  const createJob = useCreateJob();
+  const [step, setStep] = useState<string | null>(null);
+
+  async function write(letter: LetterDetails): Promise<string> {
+    const api = getApiClient();
+    try {
+      // The advert is worth keeping as a job: matching and coaching come free with it.
+      if (letter.advert.trim().length >= MIN_ADVERT) {
+        setStep("Reading the job advert…");
+        await createJob.mutateAsync({
+          title: letter.role.trim() || `${letter.company.trim()} role`,
+          company: letter.company.trim() || null,
+          raw_text: letter.advert.trim(),
+        });
+      }
+
+      setStep("Writing your letter…");
+      const base = `${letter.company.trim() || "Cover"} letter`;
+      for (let attempt = 1; attempt <= 20; attempt += 1) {
+        try {
+          const document = await createResume.mutateAsync({
+            title: attempt === 1 ? base : `${base} (${attempt})`,
+            document_type: "cover_letter",
+            target_role: letter.role.trim() || null,
+          });
+          await generateVersion(api, document.id, {
+            company: letter.company.trim(),
+            role: letter.role.trim() || null,
+            hiring_manager: letter.hiringManager.trim() || null,
+            job_advert: letter.advert.trim() || null,
+          });
+          return document.id;
+        } catch (error) {
+          if (!(error instanceof ApiError && error.status === 409)) throw error;
+        }
+      }
+      throw new ApiError({
+        status: 409,
+        code: "CONFLICT",
+        message: "You have a lot of letters for that company. Rename one and try again.",
+      });
+    } finally {
+      setStep(null);
+    }
+  }
+
+  return { write, step };
+}
+
 export function useWriteDocument() {
   const createResume = useCreateResume();
   const createJob = useCreateJob();
@@ -207,6 +267,67 @@ export function PurposeChooser({
           </Field>
         </div>
       ) : null}
+    </div>
+  );
+}
+
+/** A letter is always for one job, so it asks who it is to and what they advertised. */
+export function LetterFields({
+  value,
+  onChange,
+}: {
+  value: LetterDetails;
+  onChange: (next: LetterDetails) => void;
+}) {
+  return (
+    <div className="space-y-4">
+      <div className="grid gap-4 sm:grid-cols-2">
+        <Field>
+          <FieldLabel htmlFor="letter_company">Company</FieldLabel>
+          <Input
+            id="letter_company"
+            value={value.company}
+            placeholder="Northwind Payments"
+            maxLength={200}
+            onChange={(event) => onChange({ ...value, company: event.target.value })}
+          />
+        </Field>
+        <Field>
+          <FieldLabel htmlFor="letter_role">Role (optional)</FieldLabel>
+          <Input
+            id="letter_role"
+            value={value.role}
+            placeholder="Junior Frontend Engineer"
+            maxLength={120}
+            onChange={(event) => onChange({ ...value, role: event.target.value })}
+          />
+        </Field>
+      </div>
+      <Field>
+        <FieldLabel htmlFor="letter_manager">Addressed to (optional)</FieldLabel>
+        <Input
+          id="letter_manager"
+          value={value.hiringManager}
+          placeholder="A name, if you have one"
+          maxLength={120}
+          onChange={(event) => onChange({ ...value, hiringManager: event.target.value })}
+        />
+      </Field>
+      <Field>
+        <FieldLabel htmlFor="letter_advert">Paste the job advert (optional)</FieldLabel>
+        <Textarea
+          id="letter_advert"
+          rows={5}
+          value={value.advert}
+          maxLength={20000}
+          placeholder="Paste the advert. It decides which of your experience leads."
+          onChange={(event) => onChange({ ...value, advert: event.target.value })}
+        />
+        <FieldDescription>
+          It decides what leads — never what you claim. A letter will not answer &ldquo;we need
+          Kubernetes&rdquo; with Kubernetes you have not used.
+        </FieldDescription>
+      </Field>
     </div>
   );
 }
