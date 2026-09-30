@@ -174,6 +174,26 @@ class ProfileReadinessRead(BaseModel):
     items: list[ReadinessItemRead]
 
 
+class AdviceRead(BaseModel):
+    """One thing that would make this record produce a better resume."""
+
+    key: str
+    severity: int
+    action: str
+    title: str
+    detail: str
+    todo: str
+    item_id: str | None
+
+
+class ProfileAdviceRead(BaseModel):
+    """What to fix, worst first, and whether anything is seriously wrong."""
+
+    items: list[AdviceRead]
+    critical: int
+    important: int
+
+
 class CandidateProfileUpdate(CandidateModel):
     """Partial update: only the sections present are replaced."""
 

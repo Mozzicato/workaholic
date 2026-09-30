@@ -2,13 +2,16 @@ from fastapi import APIRouter
 
 from app.api.deps import CurrentUser, SessionDep
 from app.schemas.candidate import (
+    AdviceRead,
     CandidateProfileRead,
     CandidateProfileUpdate,
+    ProfileAdviceRead,
     ProfileReadinessRead,
     ReadinessItemRead,
 )
 from app.schemas.errors import AUTH_ERROR_RESPONSES
 from app.services.candidate import CandidateProfileService
+from app.services.resume.advice import Severity, advise
 from app.services.resume.readiness import DocumentKind, assess_readiness
 
 router = APIRouter(prefix="/profile", tags=["candidate profile"])
@@ -43,4 +46,32 @@ async def read_readiness(user: CurrentUser, session: SessionDep) -> ProfileReadi
             ReadinessItemRead(key=item.key, label=item.label, done=item.done, hint=item.hint)
             for item in resume.items
         ],
+    )
+
+
+@router.get("/advice", response_model=ProfileAdviceRead, responses=AUTH_ERROR_RESPONSES)
+async def read_advice(
+    user: CurrentUser, session: SessionDep, role: str | None = None
+) -> ProfileAdviceRead:
+    """What would make this record produce a better resume, worst first.
+
+    Advice, never a refusal: someone in a hurry can ignore all of it and still get a resume.
+    """
+    profile = await CandidateProfileService(session).get_or_create(user)
+    found = advise(profile, target_role=role)
+    return ProfileAdviceRead(
+        items=[
+            AdviceRead(
+                key=item.key,
+                severity=int(item.severity),
+                action=str(item.action),
+                title=item.title,
+                detail=item.detail,
+                todo=item.todo,
+                item_id=item.item_id,
+            )
+            for item in found
+        ],
+        critical=sum(1 for item in found if item.severity is Severity.CRITICAL),
+        important=sum(1 for item in found if item.severity is Severity.IMPORTANT),
     )

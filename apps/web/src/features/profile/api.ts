@@ -112,6 +112,35 @@ export const readinessSchema = z.object({
 
 export type Readiness = z.infer<typeof readinessSchema>;
 
+export const adviceSchema = z.object({
+  items: z.array(
+    z.object({
+      key: z.string(),
+      severity: z.number().int(),
+      action: z.enum(["answer", "edit", "remove", "build"]),
+      title: z.string(),
+      detail: z.string(),
+      todo: z.string(),
+      item_id: z.string().nullable(),
+    }),
+  ),
+  critical: z.number().int(),
+  important: z.number().int(),
+});
+
+export type ProfileAdvice = z.infer<typeof adviceSchema>;
+export type AdviceItem = ProfileAdvice["items"][number];
+
+/** What would make this record produce a better resume, worst first. */
+export function getAdvice(
+  api: ApiClient,
+  role?: string | null,
+  signal?: AbortSignal,
+): Promise<ProfileAdvice> {
+  const query = role ? `?role=${encodeURIComponent(role)}` : "";
+  return api.request(`/api/v1/profile/advice${query}`, { schema: adviceSchema, signal });
+}
+
 /** What the record still needs before a resume can be written from it. */
 export function getReadiness(api: ApiClient, signal?: AbortSignal): Promise<Readiness> {
   return api.request("/api/v1/profile/readiness", { schema: readinessSchema, signal });

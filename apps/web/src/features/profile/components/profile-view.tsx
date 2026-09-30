@@ -9,6 +9,7 @@ import { EducationSection } from "./education-section";
 import { GenerateFromProfile } from "./generate-from-profile";
 import { ExperienceSection } from "./experience-section";
 import { ImportSection } from "./import-section";
+import { RecordAdvice } from "./record-advice";
 import { ProjectsSection } from "./projects-section";
 import { SkillsSection } from "./skills-section";
 
@@ -38,6 +39,7 @@ export function ProfileView() {
       </header>
 
       <GenerateFromProfile />
+      <RecordAdvice />
       <ImportSection />
       <BasicsForm basics={profile.data.basics} />
       <EducationSection education={profile.data.education} />
