@@ -3,6 +3,7 @@ import { routes } from "@/lib/routes";
 
 import { MainNav } from "./main-nav";
 import { UserMenu } from "./user-menu";
+import { Walkthrough } from "./walkthrough";
 
 export function AppHeader({ email }: { email: string | null }) {
   return (
@@ -12,7 +13,10 @@ export function AppHeader({ email }: { email: string | null }) {
           <Logo href={routes.dashboard} />
           <MainNav />
         </div>
-        <UserMenu email={email} />
+        <div className="flex items-center gap-1 sm:gap-2">
+          <Walkthrough />
+          <UserMenu email={email} />
+        </div>
       </div>
     </header>
   );

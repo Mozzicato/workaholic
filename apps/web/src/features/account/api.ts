@@ -9,9 +9,15 @@ export const currentUserSchema = z.object({
   auth_provider: z.string(),
   created_at: z.iso.datetime({ offset: true }),
   is_admin: z.boolean().default(false),
+  // False for somebody who has never been shown how any of this works.
+  tour_seen: z.boolean().default(false),
 });
 
 export type CurrentUser = z.infer<typeof currentUserSchema>;
+
+export function markTourSeen(api: ApiClient): Promise<CurrentUser> {
+  return api.request("/api/v1/me/tour", { method: "POST", schema: currentUserSchema });
+}
 
 export function fetchCurrentUser(api: ApiClient, signal?: AbortSignal): Promise<CurrentUser> {
   return api.request("/api/v1/me", { schema: currentUserSchema, signal });

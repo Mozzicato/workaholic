@@ -28,7 +28,15 @@ async def test_first_sign_in_creates_account(
 
     assert response.status_code == 200
     body = response.json()
-    assert set(body) == {"id", "email", "name", "auth_provider", "created_at", "is_admin"}
+    assert set(body) == {
+        "id",
+        "email",
+        "name",
+        "auth_provider",
+        "created_at",
+        "is_admin",
+        "tour_seen",
+    }
     assert body["email"] == "ada@example.com"
     assert body["auth_provider"] == "email"
     assert body["name"] is None
@@ -118,3 +126,31 @@ async def test_an_account_can_erase_itself(make_app: AppFactory, idp: FakeIdenti
     assert again.status_code == 200
     assert profile.json()["skills"] == []
     assert resumes.json() == []
+
+
+@pytest.mark.usefixtures("db_engine")
+async def test_the_walkthrough_is_remembered_per_account_not_per_browser(
+    make_app: AppFactory, idp: FakeIdentityProvider
+) -> None:
+    """Seen on a laptop is seen on a phone: it is the person who has been shown, not the device."""
+    async with running(make_app()) as client:
+        headers = bearer(idp.token(subject="user-new", email="ada@example.com"))
+
+        first = await client.get(ME, headers=headers)
+        marked = await client.post(f"{ME}/tour", headers=headers)
+        again = await client.get(ME, headers=headers)
+
+    assert first.json()["tour_seen"] is False
+    assert marked.status_code == 200
+    assert marked.json()["tour_seen"] is True
+    assert again.json()["tour_seen"] is True
+
+
+@pytest.mark.usefixtures("db_engine")
+async def test_the_walkthrough_cannot_be_marked_seen_for_somebody_else(
+    make_app: AppFactory,
+) -> None:
+    async with running(make_app()) as client:
+        response = await client.post(f"{ME}/tour")
+
+    assert response.status_code == 401

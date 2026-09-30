@@ -14,3 +14,5 @@ class UserRead(BaseModel):
     created_at: datetime
     # Whether this account may open the admin dashboard. Decided by the server, from settings.
     is_admin: bool = False
+    # False for somebody who has never been shown how any of this works.
+    tour_seen: bool = False

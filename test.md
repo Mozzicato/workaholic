@@ -12,6 +12,18 @@ Files to test with are in `test-data/`:
 
 ---
 
+## 0. The walkthrough
+
+On a **brand-new account the walkthrough opens by itself** — five screens, in the order you would
+actually use them: talk, numbers, write, what is weak, history. Skip it, or walk to the end and it
+drops you in the assistant.
+
+**How it works** (top right, beside your initials) reopens it any time. It is remembered on the
+**account, not the browser**: sign in on your phone and it must not pop up again, but the button is
+still there.
+
+---
+
 ## 1. Talk, and let it build your record
 
 **Assistant → Start.** Answer as a student actually speaks. Type, or press the microphone.
