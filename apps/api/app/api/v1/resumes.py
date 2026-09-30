@@ -9,6 +9,7 @@ from app.models.candidate import DocumentType, ResumeTemplate
 from app.prompts.cover_letter import WRITE_PROMPT_VERSION
 from app.schemas.candidate import (
     GenerateResumeRequest,
+    HistoryEntry,
     ResumeCreate,
     ResumeRead,
     ResumeUpdate,
@@ -76,6 +77,12 @@ async def create_resume(
     """Start a resume. It holds no content until generation runs against confirmed evidence."""
     resume = await ResumeService(session).create(user, payload)
     return ResumeRead.model_validate(resume)
+
+
+@router.get("/history", response_model=list[HistoryEntry], responses=AUTH_ERROR_RESPONSES)
+async def read_history(user: CurrentUser, session: SessionDep) -> list[HistoryEntry]:
+    """Every document ever written on this account, newest first."""
+    return await ResumeService(session).history(user)
 
 
 @router.get(

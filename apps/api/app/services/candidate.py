@@ -10,6 +10,7 @@ Rules enforced here rather than in routes:
 import uuid
 from datetime import UTC, datetime
 
+from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -33,6 +34,7 @@ from app.repositories.candidate import (
 from app.schemas.candidate import (
     CandidateProfileUpdate,
     EvidenceCreate,
+    HistoryEntry,
     ResumeCreate,
     ResumeUpdate,
 )
@@ -205,6 +207,37 @@ class ResumeService:
             raise DuplicateResumeTitleError() from exc
         await self._session.refresh(resume)
         return resume
+
+    async def history(self, user: User, limit: int = 200) -> list[HistoryEntry]:
+        """Everything ever written for this account, newest first.
+
+        Applying for the same kind of role twice is normal, and the version written in March is
+        often the right starting point in June — so nothing is thrown away, and all of it is
+        reachable from one place.
+        """
+        rows = (
+            await self._session.execute(
+                select(ResumeVersion, Resume)
+                .join(Resume, Resume.id == ResumeVersion.resume_id)
+                .where(ResumeVersion.user_id == user.id)
+                .order_by(ResumeVersion.created_at.desc())
+                .limit(limit)
+            )
+        ).all()
+        return [
+            HistoryEntry(
+                version_id=version.id,
+                resume_id=resume.id,
+                resume_title=resume.title,
+                document_type=resume.document_type,
+                target_role=resume.target_role,
+                template=version.template,
+                version_number=version.version_number,
+                label=version.label,
+                created_at=version.created_at,
+            )
+            for version, resume in rows
+        ]
 
     async def delete(self, user: User, resume_id: uuid.UUID) -> None:
         resume = await self.get(user, resume_id)

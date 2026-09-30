@@ -240,3 +240,25 @@ export function getAtsReport(
     signal,
   });
 }
+
+export const historyEntrySchema = z.object({
+  version_id: z.uuid(),
+  resume_id: z.uuid(),
+  resume_title: z.string(),
+  document_type: z.enum(["resume", "cv", "cover_letter"]),
+  target_role: z.string().nullable(),
+  template: resumeTemplateSchema,
+  version_number: z.number().int(),
+  label: z.string(),
+  created_at: z.iso.datetime({ offset: true }),
+});
+
+export type HistoryEntry = z.infer<typeof historyEntrySchema>;
+
+/** Everything ever written on this account, newest first. */
+export function listHistory(api: ApiClient, signal?: AbortSignal): Promise<HistoryEntry[]> {
+  return api.request("/api/v1/resumes/history", {
+    schema: z.array(historyEntrySchema),
+    signal,
+  });
+}

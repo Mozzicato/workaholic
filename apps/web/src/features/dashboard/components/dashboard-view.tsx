@@ -79,9 +79,17 @@ export function DashboardView() {
 
       <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_18rem]">
         <section aria-labelledby="resumes-heading" className="space-y-4">
-          <h2 id="resumes-heading" className="text-sm font-medium text-muted-foreground">
-            Your resumes
-          </h2>
+          <div className="flex items-center justify-between gap-3">
+            <h2 id="resumes-heading" className="text-sm font-medium text-muted-foreground">
+              Your resumes
+            </h2>
+            <Link
+              href={routes.history}
+              className="text-sm text-muted-foreground underline-offset-4 hover:text-foreground hover:underline"
+            >
+              History
+            </Link>
+          </div>
           <ResumeList resumes={resumes.data} />
         </section>
 

@@ -306,6 +306,22 @@ class ResumeVersionSummary(CandidateModel):
     created_at: datetime
 
 
+class HistoryEntry(CandidateModel):
+    """One document that was written, across every resume and letter on the account."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    version_id: uuid.UUID
+    resume_id: uuid.UUID
+    resume_title: str
+    document_type: DocumentType
+    target_role: str | None
+    template: ResumeTemplate
+    version_number: int
+    label: str
+    created_at: datetime
+
+
 class LetterBriefRequest(CandidateModel):
     """Who a cover letter is for. Required when the document is a cover letter."""
 

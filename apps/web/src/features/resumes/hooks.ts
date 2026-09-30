@@ -13,6 +13,7 @@ import {
   getAtsReport,
   getResume,
   listResumes,
+  listHistory,
   listVersions,
   tailorVersion,
   updateResume,
@@ -23,6 +24,7 @@ import {
 
 export const resumeKeys = {
   all: ["resumes"] as const,
+  history: ["resumes", "history"] as const,
   detail: (id: string) => ["resumes", id] as const,
 };
 
@@ -165,5 +167,12 @@ export function useAtsReport(
       getAtsReport(getApiClient(), resumeId, versionId as string, jobId, template, signal),
     enabled: false,
     staleTime: Infinity,
+  });
+}
+
+export function useHistory() {
+  return useQuery({
+    queryKey: resumeKeys.history,
+    queryFn: ({ signal }) => listHistory(getApiClient(), signal),
   });
 }

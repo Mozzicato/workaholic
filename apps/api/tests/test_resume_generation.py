@@ -664,3 +664,48 @@ class TestCombiningLines:
 
         assert response.status_code == 422
         assert response.json()["error"]["code"] == "GENERATION_BLOCKED"
+
+
+@pytest.mark.usefixtures("db_engine")
+class TestHistory:
+    """Nothing written is thrown away: the version from March is often the start of June's."""
+
+    async def test_everything_written_is_listed_newest_first(
+        self, make_app: AppFactory, idp: FakeIdentityProvider
+    ) -> None:
+        llm = ScriptedLLM(FAITHFUL, FAITHFUL)
+        async with running(app_with(llm, make_app)) as client:
+            headers = await sign_in(client, idp)
+            resume_id = await set_up_record(client, headers)
+            await client.post(f"/api/v1/resumes/{resume_id}/versions", headers=headers, json={})
+            await client.post(f"/api/v1/resumes/{resume_id}/versions", headers=headers, json={})
+
+            history = await client.get("/api/v1/resumes/history", headers=headers)
+
+        assert history.status_code == 200
+        entries = history.json()
+        assert [entry["version_number"] for entry in entries] == [2, 1]
+        assert entries[0]["resume_title"] == "Backend resume"
+        assert entries[0]["resume_id"] == resume_id
+        assert entries[0]["document_type"] == "resume"
+
+    async def test_one_account_never_sees_another_s_history(
+        self, make_app: AppFactory, idp: FakeIdentityProvider
+    ) -> None:
+        llm = ScriptedLLM(FAITHFUL)
+        async with running(app_with(llm, make_app)) as client:
+            owner = await sign_in(client, idp)
+            resume_id = await set_up_record(client, owner)
+            await client.post(f"/api/v1/resumes/{resume_id}/versions", headers=owner, json={})
+
+            intruder = bearer(idp.token(subject=str(uuid.uuid4()), email="eve@example.com"))
+            await client.get("/api/v1/me", headers=intruder)
+            history = await client.get("/api/v1/resumes/history", headers=intruder)
+
+        assert history.json() == []
+
+    async def test_history_needs_signing_in(self, make_app: AppFactory) -> None:
+        async with running(make_app()) as client:
+            response = await client.get("/api/v1/resumes/history")
+
+        assert response.status_code == 401
