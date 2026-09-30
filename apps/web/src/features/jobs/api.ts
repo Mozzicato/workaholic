@@ -87,3 +87,24 @@ export function deleteJob(api: ApiClient, id: string): Promise<null> {
 export function getMatch(api: ApiClient, id: string, signal?: AbortSignal): Promise<MatchReport> {
   return api.request(`/api/v1/jobs/${id}/match`, { schema: matchReportSchema, signal });
 }
+
+export const coachingSchema = z.object({
+  job_id: z.uuid(),
+  gaps: z.array(z.object({ skill: z.string(), adjacent: z.array(z.string()) })),
+  ideas: z.array(
+    z.object({
+      title: z.string(),
+      covers: z.array(z.string()),
+      summary: z.string(),
+      steps: z.array(z.string()),
+    }),
+  ),
+  caveat: z.string(),
+});
+
+export type Coaching = z.infer<typeof coachingSchema>;
+
+/** What this job wants that the record lacks, and what to do about it. */
+export function getCoaching(api: ApiClient, id: string, signal?: AbortSignal): Promise<Coaching> {
+  return api.request(`/api/v1/jobs/${id}/coaching`, { schema: coachingSchema, signal });
+}

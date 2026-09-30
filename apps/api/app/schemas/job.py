@@ -60,6 +60,31 @@ class MatchReport(JobModel):
         return [item.requirement for item in self.matches if item.state is MatchState.NOT_FOUND]
 
 
+class SkillGapRead(JobModel):
+    """Something the job asks for that the record does not support."""
+
+    skill: str
+    adjacent: list[str]
+
+
+class ProjectIdeaRead(JobModel):
+    """Something small enough to finish that would earn the missing skill honestly."""
+
+    title: str
+    covers: list[str]
+    summary: str
+    steps: list[str]
+
+
+class CoachingRead(JobModel):
+    """What to do about the gap — never what to claim."""
+
+    job_id: uuid.UUID
+    gaps: list[SkillGapRead]
+    ideas: list[ProjectIdeaRead]
+    caveat: str
+
+
 class JobCreate(JobModel):
     title: str = Field(min_length=1, max_length=200)
     company: str | None = Field(default=None, max_length=200)

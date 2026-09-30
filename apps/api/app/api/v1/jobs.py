@@ -5,15 +5,19 @@ from fastapi import APIRouter, status
 from app.api.deps import CurrentUser, OptionalLLM, SessionDep
 from app.schemas.errors import AUTH_ERROR_RESPONSES, ErrorResponse
 from app.schemas.job import (
+    CoachingRead,
     JobAnalysis,
     JobCreate,
     JobRead,
     JobSummary,
     JobUpdate,
     MatchReport,
+    ProjectIdeaRead,
+    SkillGapRead,
 )
 from app.services.candidate import CandidateProfileService
 from app.services.job import JobService, build_report
+from app.services.job.coaching import coach, record_terms
 
 router = APIRouter(prefix="/jobs", tags=["jobs"])
 
@@ -89,3 +93,36 @@ async def match_job(user: CurrentUser, session: SessionDep, job_id: uuid.UUID) -
 )
 async def delete_job(user: CurrentUser, session: SessionDep, job_id: uuid.UUID) -> None:
     await JobService(session).delete(user, job_id)
+
+
+@router.get(
+    "/{job_id}/coaching",
+    response_model=CoachingRead,
+    responses={**AUTH_ERROR_RESPONSES, **NOT_FOUND},
+)
+async def coach_job(user: CurrentUser, session: SessionDep, job_id: uuid.UUID) -> CoachingRead:
+    """What this job wants that the record cannot support, and what to do about it.
+
+    Nothing here goes on a resume. A missing skill stays missing until the person has used it,
+    so the advice is what to say instead (something adjacent they really did) and what to build.
+    """
+    job = await JobService(session).get(user, job_id)
+    profile = await CandidateProfileService(session).get_or_create(user)
+    analysis = JobAnalysis.model_validate(job.analysis or {})
+    report = build_report(job.id, analysis, profile)
+
+    coaching = coach(report.missing, record_terms=record_terms(profile))
+    return CoachingRead(
+        job_id=job.id,
+        gaps=[SkillGapRead(skill=gap.skill, adjacent=list(gap.adjacent)) for gap in coaching.gaps],
+        ideas=[
+            ProjectIdeaRead(
+                title=idea.title,
+                covers=list(idea.covers),
+                summary=idea.summary,
+                steps=list(idea.steps),
+            )
+            for idea in coaching.ideas
+        ],
+        caveat=coaching.caveat,
+    )

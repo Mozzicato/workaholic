@@ -17,6 +17,7 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/ui/spinner";
 import type { Job, RequirementMatch } from "@/features/jobs/api";
+import { GapCoaching } from "@/features/jobs/components/gap-coaching";
 import { useDeleteJob, useJob, useMatch, useReanalyseJob } from "@/features/jobs/hooks";
 import { ApiError, errorMessage } from "@/lib/api/errors";
 import { routes } from "@/lib/routes";
@@ -75,6 +76,7 @@ function Loaded({ job }: { job: Job }) {
       </header>
 
       {analysed ? <MatchSection jobId={job.id} /> : <NotAnalysed jobId={job.id} />}
+      {analysed ? <GapCoaching jobId={job.id} /> : null}
 
       <section aria-labelledby="advert-heading" className="space-y-3">
         <h2 id="advert-heading" className="font-heading text-xl">

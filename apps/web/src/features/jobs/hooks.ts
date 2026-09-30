@@ -8,6 +8,7 @@ import { getApiClient } from "@/lib/api/browser";
 import {
   createJob,
   deleteJob,
+  getCoaching,
   getJob,
   getMatch,
   listJobs,
@@ -18,6 +19,7 @@ import {
 export const jobKeys = {
   all: ["jobs"] as const,
   detail: (id: string) => ["jobs", id] as const,
+  coaching: (id: string) => ["jobs", id, "coaching"] as const,
   match: (id: string) => ["jobs", id, "match"] as const,
 };
 
@@ -70,5 +72,12 @@ export function useDeleteJob() {
   return useMutation({
     mutationFn: (id: string) => deleteJob(getApiClient(), id),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: jobKeys.all }),
+  });
+}
+
+export function useCoaching(id: string) {
+  return useQuery({
+    queryKey: jobKeys.coaching(id),
+    queryFn: ({ signal }) => getCoaching(getApiClient(), id, signal),
   });
 }
