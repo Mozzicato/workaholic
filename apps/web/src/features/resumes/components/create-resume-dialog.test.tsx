@@ -1,7 +1,6 @@
 import { screen } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { ApiError } from "@/lib/api/errors";
 import { renderWithQueryClient } from "@/test/render";
 
 import { CreateResumeDialog } from "./create-resume-dialog";
@@ -11,18 +10,49 @@ const router = { push: vi.fn() };
 
 vi.mock("next/navigation", () => ({ useRouter: () => router }));
 vi.mock("@/lib/api/browser", () => ({ getApiClient: () => ({ request }) }));
+vi.mock("sonner", () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
 
-const resume = {
-  id: "11111111-1111-4111-8111-111111111111",
-  title: "Backend resume",
-  target_role: "Junior Backend Engineer",
-  document_type: "resume",
-  template: "classic",
-  status: "draft",
-  current_version_id: null,
-  created_at: "2026-09-17T10:00:00Z",
-  updated_at: "2026-09-17T10:00:00Z",
+const RESUME_ID = "11111111-1111-4111-8111-111111111111";
+const VERSION_ID = "22222222-2222-4222-8222-222222222222";
+const JOB_ID = "33333333-3333-4333-8333-333333333333";
+
+const READY = {
+  resume_ready: true,
+  cover_letter_ready: true,
+  items: [{ key: "name", label: "Your name", done: true, hint: "" }],
 };
+
+const NOT_READY = {
+  resume_ready: false,
+  cover_letter_ready: false,
+  items: [
+    {
+      key: "education",
+      label: "Your education",
+      done: false,
+      hint: "Where you studied, or are studying.",
+    },
+  ],
+};
+
+function api(readiness: unknown = READY) {
+  request.mockImplementation(async (path: string, options: { method?: string } = {}) => {
+    if (path === "/api/v1/profile/readiness") return readiness;
+    if (path === "/api/v1/jobs" && options.method === "POST") return { id: JOB_ID, title: "Role" };
+    if (path === "/api/v1/resumes" && options.method === "POST") {
+      return { id: RESUME_ID, title: "General resume", template: "classic" };
+    }
+    if (path === `/api/v1/resumes/${RESUME_ID}/versions`) return { id: VERSION_ID };
+    if (path.endsWith("/tailored")) return { version: { id: VERSION_ID }, summary: {} };
+    throw new Error(`unexpected call: ${options.method ?? "GET"} ${path}`);
+  });
+}
+
+function calls(method: string, endsWith: string) {
+  return request.mock.calls.filter(
+    ([path, options]) => String(path).endsWith(endsWith) && (options?.method ?? "GET") === method,
+  );
+}
 
 async function openDialog() {
   const view = renderWithQueryClient(<CreateResumeDialog />);
@@ -30,129 +60,87 @@ async function openDialog() {
   return view.user;
 }
 
-/** Past the template step, keeping whatever look is selected. */
-async function toDetails() {
-  const user = await openDialog();
-  await user.click(screen.getByRole("button", { name: /^Continue with/ }));
-  return user;
-}
-
 describe("CreateResumeDialog", () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
 
-  it("creates a cover letter when that is what was chosen", async () => {
-    request.mockResolvedValue({ ...resume, document_type: "cover_letter" });
+  it("asks what the resume is for, the same as starting from the record", async () => {
+    api();
+    await openDialog();
+
+    expect(await screen.findByText("What is it for?")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /A general resume/ })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /For a specific job/ })).toBeInTheDocument();
+  });
+
+  it("writes a general resume in the chosen template and opens it", async () => {
+    api();
+    const user = await openDialog();
+
+    await user.click(await screen.findByRole("radio", { name: /Harvard/ }));
+    await user.click(screen.getByRole("button", { name: /Write it in Harvard/ }));
+
+    await vi.waitFor(() => expect(router.push).toHaveBeenCalledWith(`/resumes/${RESUME_ID}`));
+    expect(calls("POST", "/api/v1/resumes")[0][1].body).toMatchObject({
+      title: "General resume",
+      template: "harvard",
+      target_role: null,
+    });
+    // The draft is written here; nobody has to find another button for it.
+    expect(calls("POST", `/resumes/${RESUME_ID}/versions`)).toHaveLength(1);
+  });
+
+  it("reads the advert and leads with what that job asks for", async () => {
+    api();
+    const user = await openDialog();
+
+    await user.click(await screen.findByRole("button", { name: /For a specific job/ }));
+    await user.type(screen.getByLabelText("Role"), "Junior Frontend Engineer");
+    await user.type(
+      screen.getByLabelText("Paste the job advert"),
+      "We want a junior frontend engineer comfortable with React and TypeScript.",
+    );
+    await user.click(screen.getByRole("button", { name: "Write it for this job" }));
+
+    await vi.waitFor(() => expect(router.push).toHaveBeenCalledWith(`/resumes/${RESUME_ID}`));
+    expect(calls("POST", "/api/v1/jobs")).toHaveLength(1);
+    expect(calls("POST", "/tailored")).toHaveLength(1);
+  });
+
+  it("will not write from a record that is not ready, and says what is missing", async () => {
+    api(NOT_READY);
+    await openDialog();
+
+    expect(await screen.findByText(/Where you studied/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Write it in/ })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Answer a few questions" })).toBeInTheDocument();
+  });
+
+  it("creates a cover letter and takes them where the advert is asked for", async () => {
+    api();
     const user = await openDialog();
 
     await user.click(screen.getByRole("button", { name: /Cover letter/ }));
-    await user.type(screen.getByLabelText("Name"), "Northwind letter");
+    await user.type(await screen.findByLabelText("Name it"), "Northwind letter");
     await user.click(screen.getByRole("button", { name: "Create letter" }));
 
-    await vi.waitFor(() => expect(request).toHaveBeenCalled());
-    expect(request.mock.calls[0][1].body.document_type).toBe("cover_letter");
-  });
-
-  it("opens on the templates, with Classic chosen", async () => {
-    await openDialog();
-
-    expect(screen.getByRole("heading", { name: "Choose a template" })).toBeInTheDocument();
-    expect(screen.getAllByRole("radio")).toHaveLength(11);
-    expect(screen.getByRole("radio", { name: /Classic/ })).toHaveAttribute("aria-checked", "true");
-    expect(screen.queryByLabelText("Name")).not.toBeInTheDocument();
-  });
-
-  it("creates the resume in the template that was picked", async () => {
-    request.mockResolvedValue({ ...resume, template: "harvard" });
-    const user = await openDialog();
-
-    await user.click(screen.getByRole("radio", { name: /Harvard/ }));
-    await user.click(screen.getByRole("button", { name: "Continue with Harvard" }));
-    expect(screen.getByText("Harvard")).toBeInTheDocument();
-    await user.type(screen.getByLabelText("Name"), "Backend resume");
-    await user.click(screen.getByRole("button", { name: "Create resume" }));
-
-    await vi.waitFor(() => expect(request).toHaveBeenCalled());
-    expect(request.mock.calls[0][1].body.template).toBe("harvard");
-  });
-
-  it("warns that two columns can trip an older ATS", async () => {
-    const user = await openDialog();
-
-    await user.click(screen.getByRole("radio", { name: /Sidebar/ }));
-
-    expect(screen.getByText(/some older applicant-tracking systems/)).toBeInTheDocument();
-  });
-
-  it("can go back and change the template before creating", async () => {
-    const user = await toDetails();
-
-    await user.click(screen.getByRole("button", { name: "Change" }));
-
-    expect(screen.getByRole("heading", { name: "Choose a template" })).toBeInTheDocument();
-  });
-
-  it("requires a name before calling the API", async () => {
-    const user = await toDetails();
-
-    await user.click(screen.getByRole("button", { name: "Create resume" }));
-
-    expect(await screen.findByText("Give this document a name")).toBeInTheDocument();
-    expect(request).not.toHaveBeenCalled();
-  });
-
-  it("creates the resume and opens it", async () => {
-    request.mockResolvedValue(resume);
-    const user = await toDetails();
-
-    await user.type(screen.getByLabelText("Name"), "  Backend resume ");
-    await user.type(screen.getByLabelText("Target role (optional)"), "Junior Backend Engineer");
-    await user.click(screen.getByRole("button", { name: "Create resume" }));
-
-    await vi.waitFor(() => expect(router.push).toHaveBeenCalledWith(`/resumes/${resume.id}`));
-    expect(request).toHaveBeenCalledWith(
-      "/api/v1/resumes",
-      expect.objectContaining({
-        method: "POST",
-        body: {
-          title: "Backend resume",
-          target_role: "Junior Backend Engineer",
-          document_type: "resume",
-          template: "classic",
-        },
-      }),
-    );
-  });
-
-  it("sends no target role rather than an empty one", async () => {
-    request.mockResolvedValue({ ...resume, target_role: null });
-    const user = await toDetails();
-
-    await user.type(screen.getByLabelText("Name"), "Backend resume");
-    await user.click(screen.getByRole("button", { name: "Create resume" }));
-
-    await vi.waitFor(() => expect(request).toHaveBeenCalled());
-    expect(request.mock.calls[0][1].body).toEqual({
-      title: "Backend resume",
-      target_role: null,
-      document_type: "resume",
-      template: "classic",
+    await vi.waitFor(() => expect(router.push).toHaveBeenCalledWith(`/resumes/${RESUME_ID}`));
+    expect(calls("POST", "/api/v1/resumes")[0][1].body).toMatchObject({
+      title: "Northwind letter",
+      document_type: "cover_letter",
     });
+    // A letter is written on its own page, where the company and advert are asked for.
+    expect(calls("POST", `/resumes/${RESUME_ID}/versions`)).toHaveLength(0);
   });
 
-  it("explains a duplicate name in the user's terms", async () => {
-    request.mockRejectedValue(
-      new ApiError({ status: 409, code: "conflict", message: "Resume title already used" }),
-    );
-    const user = await toDetails();
+  it("does not tailor from a couple of words", async () => {
+    api();
+    const user = await openDialog();
 
-    await user.type(screen.getByLabelText("Name"), "Backend resume");
-    await user.click(screen.getByRole("button", { name: "Create resume" }));
+    await user.click(await screen.findByRole("button", { name: /For a specific job/ }));
+    await user.type(screen.getByLabelText("Paste the job advert"), "frontend role");
 
-    expect(
-      await screen.findByText("You already have a document with that name."),
-    ).toBeInTheDocument();
-    expect(router.push).not.toHaveBeenCalled();
+    expect(screen.getByRole("button", { name: "Write it for this job" })).toBeDisabled();
   });
 });

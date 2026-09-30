@@ -1,11 +1,9 @@
 "use client";
 
-import { zodResolver } from "@hookform/resolvers/zod";
-import { ArrowLeftIcon, PlusIcon } from "lucide-react";
+import { PlusIcon, SparklesIcon } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
-import { useForm } from "react-hook-form";
-import { z } from "zod";
+import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -17,77 +15,70 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
-import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
+import { Field, FieldDescription, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Spinner } from "@/components/ui/spinner";
-import { FormErrorAlert } from "@/features/auth/components/form-alert";
-import type { DocumentType, ResumeTemplate } from "@/features/resumes/api";
+import { ReadinessChecklist } from "@/features/profile/components/readiness-checklist";
+import { useReadiness } from "@/features/profile/hooks";
+import type { DocumentType } from "@/features/resumes/api";
 import { useCreateResume } from "@/features/resumes/hooks";
 import { templateInfo } from "@/features/resumes/templates";
-import { ApiError, errorMessage } from "@/lib/api/errors";
+import { errorMessage } from "@/lib/api/errors";
+import { routes } from "@/lib/routes";
 import { cn } from "@/lib/utils";
 
+import {
+  BLANK,
+  describes,
+  PurposeChooser,
+  useWriteDocument,
+  type NewDocument,
+} from "./new-document";
 import { TemplateGallery } from "./template-gallery";
-
-const schema = z.object({
-  title: z
-    .string()
-    .trim()
-    .min(1, "Give this document a name")
-    .max(120, "Use 120 characters or fewer"),
-  target_role: z.string().trim().max(120, "Use 120 characters or fewer"),
-});
 
 const KINDS = [
   { value: "resume", label: "Resume", description: "Your experience, on one page" },
   { value: "cover_letter", label: "Cover letter", description: "A letter for one application" },
 ] as const satisfies readonly { value: DocumentType; label: string; description: string }[];
 
-type Values = z.infer<typeof schema>;
-
 /**
- * Starting a resume begins with how it will look — the choice people expect to make first — then
- * asks for a name. A cover letter has one layout, so it goes straight to the details.
+ * Start something new: what kind, what it is for, and how it should look — then it is written.
+ *
+ * The same three questions as starting from the record, because it is the same act.
  */
 export function CreateResumeDialog({ variant = "default" }: { variant?: "default" | "outline" }) {
   const [open, setOpen] = useState(false);
   const [kind, setKind] = useState<DocumentType>("resume");
-  const [step, setStep] = useState<"look" | "details">("look");
-  const [template, setTemplate] = useState<ResumeTemplate>("classic");
-  const [formError, setFormError] = useState<string | null>(null);
+  const [document, setDocument] = useState<NewDocument>(BLANK);
+  const [letterTitle, setLetterTitle] = useState("");
   const router = useRouter();
+  const readiness = useReadiness();
   const createResume = useCreateResume();
-  const {
-    register,
-    handleSubmit,
-    reset,
-    formState: { errors, isSubmitting },
-  } = useForm<Values>({
-    resolver: zodResolver(schema),
-    defaultValues: { title: "", target_role: "" },
-  });
+  const { write, step } = useWriteDocument();
 
-  const choosingLook = kind === "resume" && step === "look";
+  const isLetter = kind === "cover_letter";
+  const checking = readiness.isPending;
+  const ready = isLetter
+    ? (readiness.data?.cover_letter_ready ?? false)
+    : (readiness.data?.resume_ready ?? false);
 
-  async function onSubmit(values: Values) {
-    setFormError(null);
+  async function onSubmit() {
     try {
-      const resume = await createResume.mutateAsync({
-        title: values.title,
-        target_role: values.target_role || null,
-        document_type: kind,
-        ...(kind === "resume" ? { template } : {}),
-      });
+      if (isLetter) {
+        // A letter needs the company and the advert, which the document's own page asks for.
+        const letter = await createResume.mutateAsync({
+          title: letterTitle.trim() || "Cover letter",
+          document_type: "cover_letter",
+        });
+        setOpen(false);
+        router.push(routes.resume(letter.id));
+        return;
+      }
+      const resumeId = await write(document);
       setOpen(false);
-      reset();
-      router.push(`/resumes/${resume.id}`);
+      router.push(routes.resume(resumeId));
     } catch (error) {
-      // A duplicate name is the one case worth pointing at the field.
-      setFormError(
-        error instanceof ApiError && error.status === 409
-          ? "You already have a document with that name."
-          : errorMessage(error),
-      );
+      toast.error(errorMessage(error));
     }
   }
 
@@ -95,11 +86,9 @@ export function CreateResumeDialog({ variant = "default" }: { variant?: "default
     <Dialog
       open={open}
       onOpenChange={(next) => {
+        if (step) return;
         setOpen(next);
-        if (!next) {
-          setFormError(null);
-          setStep("look");
-        }
+        if (!next) setDocument(BLANK);
       }}
     >
       <DialogTrigger
@@ -110,20 +99,11 @@ export function CreateResumeDialog({ variant = "default" }: { variant?: "default
           </Button>
         }
       />
-      <DialogContent
-        className={cn(
-          "max-h-[92dvh] overflow-y-auto",
-          choosingLook ? "sm:max-w-4xl" : "sm:max-w-md",
-        )}
-      >
+      <DialogContent className="max-h-[92dvh] overflow-y-auto sm:max-w-3xl">
         <DialogHeader>
-          <DialogTitle className="font-heading text-2xl">
-            {choosingLook ? "Choose a template" : "Start something new"}
-          </DialogTitle>
+          <DialogTitle className="font-heading text-2xl">Start something new</DialogTitle>
           <DialogDescription>
-            {choosingLook
-              ? "Pick the look you like. You can change it any time — your words stay the same."
-              : "Name it for yourself, and say which role it's for. Workaholic builds the content from what you tell it — nothing is invented."}
+            Written from your record. Nothing is added that you have not told us.
           </DialogDescription>
         </DialogHeader>
 
@@ -149,79 +129,67 @@ export function CreateResumeDialog({ variant = "default" }: { variant?: "default
           </div>
         </fieldset>
 
-        {choosingLook ? (
-          <>
-            <TemplateGallery value={template} onChange={setTemplate} />
-            <DialogFooter showCloseButton>
-              <Button size="lg" className="h-10" onClick={() => setStep("details")}>
-                Continue with {templateInfo(template).name}
-              </Button>
-            </DialogFooter>
-          </>
+        {!checking && !ready && readiness.data ? (
+          <div className="rounded-lg border border-dashed p-4">
+            <p className="text-sm font-medium">
+              Your record needs a little more before this can be written:
+            </p>
+            <ReadinessChecklist readiness={readiness.data} letter={isLetter} className="mt-3" />
+            <Button
+              variant="outline"
+              size="sm"
+              className="mt-3"
+              onClick={() => {
+                setOpen(false);
+                router.push(routes.assistant);
+              }}
+            >
+              Answer a few questions
+            </Button>
+          </div>
+        ) : null}
+
+        {isLetter ? (
+          <Field>
+            <FieldLabel htmlFor="letter_title">Name it</FieldLabel>
+            <Input
+              id="letter_title"
+              className="h-10"
+              value={letterTitle}
+              placeholder="Northwind letter"
+              maxLength={120}
+              onChange={(event) => setLetterTitle(event.target.value)}
+            />
+            <FieldDescription>
+              The company and the advert are asked for on the next page.
+            </FieldDescription>
+          </Field>
         ) : (
-          <form onSubmit={handleSubmit(onSubmit)} noValidate>
-            <FieldGroup>
-              <FormErrorAlert message={formError} />
-
-              {kind === "resume" ? (
-                <div className="flex items-center justify-between gap-3 rounded-lg bg-muted/60 px-3 py-2 text-sm">
-                  <span>
-                    Template: <span className="font-medium">{templateInfo(template).name}</span>
-                  </span>
-                  <Button type="button" variant="ghost" size="sm" onClick={() => setStep("look")}>
-                    <ArrowLeftIcon aria-hidden="true" />
-                    Change
-                  </Button>
-                </div>
-              ) : null}
-
-              <Field data-invalid={Boolean(errors.title)}>
-                <FieldLabel htmlFor="title">Name</FieldLabel>
-                <Input
-                  id="title"
-                  className="h-10"
-                  placeholder={
-                    kind === "resume" ? "Software engineering resume" : "Northwind letter"
-                  }
-                  aria-invalid={Boolean(errors.title)}
-                  {...register("title")}
-                />
-                <FieldError errors={[errors.title]} />
-              </Field>
-
-              <Field data-invalid={Boolean(errors.target_role)}>
-                <FieldLabel htmlFor="target_role">Target role (optional)</FieldLabel>
-                <Input
-                  id="target_role"
-                  className="h-10"
-                  placeholder="Junior Backend Engineer"
-                  aria-invalid={Boolean(errors.target_role)}
-                  {...register("target_role")}
-                />
-                {errors.target_role ? (
-                  <FieldError errors={[errors.target_role]} />
-                ) : (
-                  <FieldDescription>
-                    {kind === "resume"
-                      ? "Used later to tailor and check the resume."
-                      : "The role the letter is for."}
-                  </FieldDescription>
-                )}
-              </Field>
-
-              <DialogFooter showCloseButton>
-                <Button type="submit" size="lg" className="h-10" disabled={isSubmitting}>
-                  {isSubmitting ? <Spinner /> : null}
-                  {isSubmitting
-                    ? "Creating…"
-                    : kind === "resume"
-                      ? "Create resume"
-                      : "Create letter"}
-                </Button>
-              </DialogFooter>
-            </FieldGroup>
-          </form>
+          <>
+            <PurposeChooser value={document} onChange={setDocument} />
+            <TemplateGallery
+              value={document.template}
+              onChange={(template) => setDocument({ ...document, template })}
+            />
+          </>
         )}
+
+        <DialogFooter showCloseButton>
+          <Button
+            size="lg"
+            className="h-10"
+            disabled={Boolean(step) || !ready || checking || (!isLetter && !describes(document))}
+            onClick={() => void onSubmit()}
+          >
+            {step ? <Spinner /> : <SparklesIcon aria-hidden="true" />}
+            {step ??
+              (isLetter
+                ? "Create letter"
+                : document.purpose === "general"
+                  ? `Write it in ${templateInfo(document.template).name}`
+                  : "Write it for this job")}
+          </Button>
+        </DialogFooter>
       </DialogContent>
     </Dialog>
   );
