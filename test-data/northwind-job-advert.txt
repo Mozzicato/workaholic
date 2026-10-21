@@ -1,0 +1,30 @@
+Junior Frontend Engineer
+Northwind Payments — Lagos (hybrid, 3 days in office)
+
+About the role
+We are a payments company serving small merchants across West Africa. You will join a team of
+six engineers working on the merchant dashboard: the screens our customers use every day to see
+what they have been paid, settle disputes and download statements.
+
+What you will do
+- Build and maintain screens in our React and TypeScript dashboard
+- Work with our designers to turn Figma files into accessible, responsive pages
+- Write tests for the code you ship and review your teammates' pull requests
+- Talk to merchants about what is confusing, and fix it
+
+What we are looking for
+- Comfortable with JavaScript and React, and willing to learn TypeScript properly
+- Understands REST APIs and can debug a request that is failing
+- Uses Git day to day
+- Writes tests without being asked
+- Communicates clearly in writing
+
+Nice to have
+- Next.js
+- Experience with Kubernetes and Go
+- Kafka or another event streaming platform
+- AWS, particularly ECS and CloudWatch
+- Experience at scale: systems serving millions of users
+
+How to apply
+Send your CV. We interview in two rounds: a technical conversation and a short take-home.

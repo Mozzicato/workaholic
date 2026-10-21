@@ -1,0 +1,98 @@
+name: Keep Supabase awake
+
+# Supabase pauses a free project after 7 days without traffic, and a paused project loses its
+# hostname — so every sign-in fails with "we couldn't reach the sign-in service" until somebody
+# notices and restores it by hand. That happened once; this is so it does not happen again.
+#
+# Running daily gives seven chances before a pause could bite. The request deliberately reaches
+# Postgres rather than only the gateway, because it is database traffic that counts as activity.
+#
+# It is a monitor as well as a keep-alive: if the project is unreachable or its database is not
+# answering, the job fails and GitHub emails you. That is the point — find out from a failed job,
+# not from a user who cannot sign in.
+#
+# Note: GitHub disables scheduled workflows in a repository with 60 days of no commits. If this
+# repository goes quiet that long, re-enable it on the Actions tab (or just push something).
+
+on:
+  schedule:
+    # 06:00 UTC daily. Cron here can run late under load, which a daily ping absorbs easily.
+    - cron: "0 6 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: keep-supabase-awake
+  cancel-in-progress: false
+
+jobs:
+  ping:
+    name: Ping Supabase
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Check the configuration is present
+        env:
+          SUPABASE_URL: ${{ vars.SUPABASE_URL }}
+          SUPABASE_PUBLISHABLE_KEY: ${{ vars.SUPABASE_PUBLISHABLE_KEY }}
+        run: |
+          if [ -z "$SUPABASE_URL" ] || [ -z "$SUPABASE_PUBLISHABLE_KEY" ]; then
+            echo "::error::Set the repository variables SUPABASE_URL and SUPABASE_PUBLISHABLE_KEY"
+            echo "::error::(Settings → Secrets and variables → Actions → Variables)."
+            exit 1
+          fi
+
+      - name: The auth service is reachable
+        env:
+          SUPABASE_URL: ${{ vars.SUPABASE_URL }}
+          SUPABASE_PUBLISHABLE_KEY: ${{ vars.SUPABASE_PUBLISHABLE_KEY }}
+        run: |
+          # A paused project no longer resolves in DNS, so curl fails here before any HTTP code.
+          status=$(curl -sS -o /dev/null -w '%{http_code}' --max-time 30 --retry 3 --retry-delay 10 \
+            --retry-all-errors \
+            -H "apikey: $SUPABASE_PUBLISHABLE_KEY" \
+            -H "Authorization: Bearer $SUPABASE_PUBLISHABLE_KEY" \
+            "$SUPABASE_URL/auth/v1/health") || {
+              echo "::error::Could not reach $SUPABASE_URL at all — the project is probably paused."
+              exit 1
+            }
+          echo "auth/v1/health → HTTP $status"
+          if [ "$status" != "200" ]; then
+            echo "::error::The auth service answered HTTP $status, not 200."
+            exit 1
+          fi
+
+      - name: The database behind it is answering
+        env:
+          SUPABASE_URL: ${{ vars.SUPABASE_URL }}
+          SUPABASE_PUBLISHABLE_KEY: ${{ vars.SUPABASE_PUBLISHABLE_KEY }}
+        run: |
+          # A sign-in attempt for an address that does not exist. It must read auth.users to know
+          # that, which is the database traffic this whole workflow exists to produce. The expected
+          # answer is 400 invalid_credentials; a 5xx means the gateway is up but Postgres is not,
+          # which is exactly the state a half-finished restore leaves behind.
+          body=$(mktemp)
+          status=$(curl -sS -o "$body" -w '%{http_code}' --max-time 30 --retry 3 --retry-delay 10 \
+            --retry-all-errors \
+            -X POST \
+            -H "apikey: $SUPABASE_PUBLISHABLE_KEY" \
+            -H "Content-Type: application/json" \
+            -d '{"email":"keep-alive@invalid.workaholic.test","password":"not-a-real-password"}' \
+            "$SUPABASE_URL/auth/v1/token?grant_type=password") || {
+              echo "::error::Could not reach the token endpoint."
+              exit 1
+            }
+          echo "auth/v1/token → HTTP $status"
+          case "$status" in
+            400|401|403)
+              echo "Postgres answered: the sign-in was refused, which is the correct answer here."
+              ;;
+            *)
+              echo "::error::Expected the sign-in to be refused; got HTTP $status."
+              # Safe to print: it is an error from a login that was meant to fail.
+              cat "$body"
+              exit 1
+              ;;
+          esac

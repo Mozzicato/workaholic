@@ -43,3 +43,10 @@ Thumbs.db
 
 # Benchmark outputs (regenerate with python -m benchmarks.run)
 apps/api/benchmarks/results/
+
+# Launch-video renders: 11 MB of generated frames, audio and MP4. Rebuild, don't keep.
+brag-output/
+
+# Scratch reference material dropped in while designing the templates — screenshots,
+# PDFs and a 2 MB mockup. Source of ideas, not source code.
+resume-temp/
