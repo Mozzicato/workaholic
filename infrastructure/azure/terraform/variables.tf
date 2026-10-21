@@ -150,9 +150,19 @@ variable "api_image" {
 }
 
 variable "api_min_replicas" {
-  description = "0 = scale to zero (no charge while idle; first request has a cold start)."
+  # 1 = one replica always running, so nobody waits for a cold start.
+  #
+  # Scaling to zero cost nothing, but it made the first request after a quiet spell wait about
+  # fifteen seconds for a container to boot, which reads as a broken product. A replica that is up
+  # but not serving bills at the idle rate, which at the time of writing was $0.000003 per
+  # vCPU-second and per GiB-second in germanywestcentral: about $6 a month for 0.25 vCPU and
+  # 0.5 GiB, less if the monthly free grant applies. Approved against the student credit
+  # on 2026-10-21.
+  #
+  # Set this back to 0 to stop paying for idle time and accept the cold start again.
+  description = "1 = always warm. 0 = scale to zero (free while idle; first request pays a boot)."
   type        = number
-  default     = 0
+  default     = 1
 }
 
 variable "api_max_replicas" {
