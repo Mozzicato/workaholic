@@ -95,7 +95,9 @@ describe("GenerateFromProfile", () => {
       target_role: "Junior Frontend Engineer",
     });
     expect(calls("POST", "/tailored")).toHaveLength(1);
-  });
+    // Three fields and an advert typed a keystroke at a time, each one re-validating the form:
+    // comfortably over the 5s default on a slow machine, and nothing here is actually waiting.
+  }, 20_000);
 
   it("will not write from a record that is not ready, and says what is missing", async () => {
     api(NOT_READY);

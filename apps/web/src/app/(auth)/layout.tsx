@@ -1,8 +1,11 @@
 import { Logo } from "@/components/brand/logo";
+import { WarmApi } from "@/components/system/warm-api";
 
 export default function AuthLayout({ children }: LayoutProps<"/">) {
   return (
     <div className="grid min-h-dvh lg:grid-cols-[minmax(0,1fr)_minmax(0,1.05fr)]">
+      {/* Somebody about to sign in is about to need the API. Start it now. */}
+      <WarmApi />
       <aside className="relative hidden overflow-hidden bg-primary p-12 text-primary-foreground lg:flex lg:flex-col lg:justify-between">
         <Logo tone="inverse" />
 

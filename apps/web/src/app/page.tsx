@@ -3,6 +3,7 @@ import Link from "next/link";
 import type { ReactNode } from "react";
 
 import { Logo } from "@/components/brand/logo";
+import { WarmApi } from "@/components/system/warm-api";
 import { buttonVariants } from "@/components/ui/button";
 import { EvidenceDemo } from "@/features/marketing/components/evidence-demo";
 import { routes } from "@/lib/routes";
@@ -54,6 +55,9 @@ const ATS_CHECKS = [
 export default function HomePage() {
   return (
     <div className="flex min-h-dvh flex-col">
+      {/* Most people meet the product here and click through to sign up. Start the API now,
+          so the wait happens while they read rather than after they press a button. */}
+      <WarmApi />
       <SiteHeader />
 
       <main className="flex-1">
@@ -66,8 +70,7 @@ export default function HomePage() {
                 Evidence-first resume builder
               </p>
               <h1 className="mt-6 font-heading text-[3.25rem] leading-[0.98] tracking-tight sm:text-7xl lg:text-[5.25rem]">
-                Your real experience,{" "}
-                <em className="text-primary">written&nbsp;well.</em>
+                Your real experience, <em className="text-primary">written&nbsp;well.</em>
               </h1>
               <p className="mt-6 max-w-xl text-lg leading-relaxed text-muted-foreground">
                 Workaholic interviews you about what you&apos;ve actually done, turns your answers
@@ -75,13 +78,19 @@ export default function HomePage() {
                 invents a metric, an employer or a skill.
               </p>
               <div className="mt-9 flex flex-wrap items-center gap-3">
-                <Link href={routes.signup} className={cn(buttonVariants({ size: "lg" }), "h-11 px-5 text-[0.95rem]")}>
+                <Link
+                  href={routes.signup}
+                  className={cn(buttonVariants({ size: "lg" }), "h-11 px-5 text-[0.95rem]")}
+                >
                   Build my resume
                   <ArrowRightIcon aria-hidden="true" data-icon="inline-end" />
                 </Link>
                 <Link
                   href="#how-it-works"
-                  className={cn(buttonVariants({ variant: "ghost", size: "lg" }), "h-11 px-4 text-[0.95rem]")}
+                  className={cn(
+                    buttonVariants({ variant: "ghost", size: "lg" }),
+                    "h-11 px-4 text-[0.95rem]",
+                  )}
                 >
                   See how it works
                 </Link>
@@ -93,7 +102,11 @@ export default function HomePage() {
         </section>
 
         {/* How it works */}
-        <Section id="how-it-works" eyebrow="How it works" title="From what you did to a resume you can stand behind.">
+        <Section
+          id="how-it-works"
+          eyebrow="How it works"
+          title="From what you did to a resume you can stand behind."
+        >
           <ol className="grid gap-px overflow-hidden rounded-2xl border bg-border sm:grid-cols-2 lg:grid-cols-4">
             {STEPS.map((step, index) => (
               <li key={step.title} className="flex flex-col gap-3 bg-card p-6 sm:p-7">
@@ -125,11 +138,7 @@ export default function HomePage() {
         </Section>
 
         {/* Honest ATS */}
-        <Section
-          id="ats"
-          eyebrow="Honest ATS analysis"
-          title="A score that shows its working."
-        >
+        <Section id="ats" eyebrow="Honest ATS analysis" title="A score that shows its working.">
           <div className="grid gap-8 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)] lg:gap-14">
             <div className="space-y-4 text-[1.05rem] leading-relaxed text-muted-foreground">
               <p>
@@ -143,7 +152,10 @@ export default function HomePage() {
             </div>
             <ul className="grid content-start gap-2 sm:grid-cols-2">
               {ATS_CHECKS.map((check) => (
-                <li key={check} className="flex items-center gap-2.5 rounded-lg border bg-card px-3.5 py-3 text-sm">
+                <li
+                  key={check}
+                  className="flex items-center gap-2.5 rounded-lg border bg-card px-3.5 py-3 text-sm"
+                >
                   <CheckIcon className="size-4 shrink-0 text-primary" aria-hidden="true" />
                   {check}
                 </li>
@@ -159,7 +171,9 @@ export default function HomePage() {
               aria-hidden="true"
               className="pointer-events-none absolute inset-0 opacity-[0.07] [background-image:repeating-linear-gradient(to_bottom,transparent_0,transparent_31px,currentColor_31px,currentColor_32px)]"
             />
-            <h2 className="relative font-heading text-4xl tracking-tight sm:text-6xl">Start with what&apos;s true.</h2>
+            <h2 className="relative font-heading text-4xl tracking-tight sm:text-6xl">
+              Start with what&apos;s true.
+            </h2>
             <p className="relative mx-auto mt-4 max-w-md text-primary-foreground/75">
               Tell Workaholic what you&apos;ve done. It&apos;ll help you say it well.
             </p>
@@ -188,10 +202,16 @@ function SiteHeader() {
       <div className="mx-auto flex h-16 max-w-6xl items-center justify-between gap-4 px-4 sm:px-6">
         <Logo />
         <nav aria-label="Main" className="flex items-center gap-1 sm:gap-2">
-          <Link href="#how-it-works" className={cn(buttonVariants({ variant: "ghost" }), "hidden h-9 md:inline-flex")}>
+          <Link
+            href="#how-it-works"
+            className={cn(buttonVariants({ variant: "ghost" }), "hidden h-9 md:inline-flex")}
+          >
             How it works
           </Link>
-          <Link href="#principles" className={cn(buttonVariants({ variant: "ghost" }), "hidden h-9 md:inline-flex")}>
+          <Link
+            href="#principles"
+            className={cn(buttonVariants({ variant: "ghost" }), "hidden h-9 md:inline-flex")}
+          >
             Principles
           </Link>
           <Link href={routes.login} className={cn(buttonVariants({ variant: "ghost" }), "h-9")}>
@@ -241,14 +261,23 @@ function Section({
   children: ReactNode;
 }) {
   return (
-    <section id={id} aria-labelledby={`${id}-title`} className="scroll-mt-20 px-4 py-20 sm:px-6 sm:py-24">
+    <section
+      id={id}
+      aria-labelledby={`${id}-title`}
+      className="scroll-mt-20 px-4 py-20 sm:px-6 sm:py-24"
+    >
       <div className="mx-auto max-w-6xl">
         <div className="mb-12 max-w-2xl">
           <p className="font-mono text-xs tracking-[0.14em] text-primary uppercase">{eyebrow}</p>
-          <h2 id={`${id}-title`} className="mt-3 font-heading text-4xl leading-[1.05] tracking-tight sm:text-5xl">
+          <h2
+            id={`${id}-title`}
+            className="mt-3 font-heading text-4xl leading-[1.05] tracking-tight sm:text-5xl"
+          >
             {title}
           </h2>
-          {intro ? <p className="mt-4 text-lg leading-relaxed text-muted-foreground">{intro}</p> : null}
+          {intro ? (
+            <p className="mt-4 text-lg leading-relaxed text-muted-foreground">{intro}</p>
+          ) : null}
         </div>
         {children}
       </div>
@@ -267,7 +296,12 @@ function PrincipleList({
 }) {
   const Icon = tone === "positive" ? CheckIcon : MinusIcon;
   return (
-    <div className={cn("rounded-2xl border p-6 sm:p-8", tone === "positive" ? "bg-card" : "bg-secondary/60")}>
+    <div
+      className={cn(
+        "rounded-2xl border p-6 sm:p-8",
+        tone === "positive" ? "bg-card" : "bg-secondary/60",
+      )}
+    >
       <h3 className="font-heading text-2xl">{title}</h3>
       <ul className="mt-5 space-y-3.5">
         {items.map((item) => (
@@ -275,7 +309,9 @@ function PrincipleList({
             <span
               className={cn(
                 "mt-0.5 flex size-5 shrink-0 items-center justify-center rounded-full",
-                tone === "positive" ? "bg-primary text-primary-foreground" : "bg-destructive/12 text-destructive",
+                tone === "positive"
+                  ? "bg-primary text-primary-foreground"
+                  : "bg-destructive/12 text-destructive",
               )}
             >
               <Icon className="size-3" aria-hidden="true" />
